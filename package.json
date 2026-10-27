@@ -11,6 +11,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
+    "prestart:dev": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); try{require('fs').unlinkSync('tsconfig.build.tsbuildinfo')}catch(_){}\"",
     "start:prod": "node dist/main",
     "seed": "ts-node src/seed.ts",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
