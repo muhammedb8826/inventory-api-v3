@@ -33,13 +33,13 @@ jobs:
           mkdir -p deploy
           cp package.json package-lock.json deploy/
           cp -r dist deploy/dist
-          mkdir -p deploy/src/database
+          mkdir -p deploy/src/database deploy/src/common
           cp -r src/database/migrations deploy/src/database/migrations
           cp -r src/database/entities deploy/src/database/entities
           cp src/database/data-source.ts deploy/src/database/
           cp -r src/database/constants deploy/src/database/constants 2>/dev/null || true
-          cp src/seed.ts deploy/src/ 2>/dev/null || true
-          cp tsconfig.json nest-cli.json deploy/ 2>/dev/null || true
+          cp -r src/common/enums deploy/src/common/enums
+          cp tsconfig.json nest-cli.json deploy/
 
       - name: Deploy runtime bundle to cPanel via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5

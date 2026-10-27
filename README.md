@@ -454,13 +454,13 @@ scripts/create-database.ts
 
 1. In cPanel **File Manager**, create the folder matching `CPANEL_DIR_VGATE`.
 2. In **Setup Node.js App**, set application root to that folder, startup file **`dist/main.js`**, Node 20.
-3. After FTP upload: **Run NPM Install** (`npm ci --omit=dev`), then **post-deploy migrate** (SSH or cPanel terminal):
+3. After FTP upload: **Run NPM Install** (`npm ci --omit=dev`), then **post-deploy migrate** (SSH or cPanel terminal). Prefer compiled JS (no `ts-node`):
 
 ```bash
-NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run
+NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run:prod
 ```
 
-4. **Restart** the Node app. Set env: `NODE_ENV=production`, `DB_SYNCHRONIZE=false`, `DB_*`, `JWT_*`, `PORT`, `CORS_ORIGIN`, `DB_SEED=false`.
+4. **Restart** the Node app. Startup file: **`dist/main.js`**. Set env: `NODE_ENV=production`, `DB_SYNCHRONIZE=false`, `DB_*`, `JWT_*`, `PORT`, `CORS_ORIGIN`, `DB_SEED=false`.
 
 FTP error `553 Can't open that file` usually means `CPANEL_DIR_VGATE` is wrong or the folder does not exist on the server.
 
@@ -468,7 +468,7 @@ FTP error `553 Can't open that file` usually means `CPANEL_DIR_VGATE` is wrong o
 
 - [ ] Strong JWT secrets
 - [ ] `NODE_ENV=production` and `DB_SYNCHRONIZE=false` (sync is **forced off** in production)
-- [ ] Run `npm run migration:run` **after every deploy** before/with restart (see `database/README.md`)
+- [ ] Run `npm run migration:run:prod` **after every deploy** before/with restart (see `database/README.md`)
 - [ ] Set `DB_SEED=false` after initial seed
 - [ ] Configure `CORS_ORIGIN` for your frontend domain
 - [ ] Frontend points at `/api/v1`
