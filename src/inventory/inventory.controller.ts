@@ -90,6 +90,23 @@ export class InventoryController {
     return this.inventoryService.findMovements(query, requestBaseUrl(req));
   }
 
+  @Get('lookup')
+  @RequirePermissions('inventory.read')
+  lookup(
+    @Req() req: RequestLike,
+    @Query('code') code: string,
+    @Query('locationId') locationId?: string,
+  ) {
+    if (!code?.trim()) {
+      throw new BadRequestException('code query param is required');
+    }
+    return this.inventoryService.findByBarcode(
+      code,
+      locationId,
+      requestBaseUrl(req),
+    );
+  }
+
   @Post('adjustments')
   @RequirePermissions('inventory.adjust')
   createAdjustment(

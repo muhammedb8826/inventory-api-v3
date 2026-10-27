@@ -15,10 +15,18 @@ import { UuidBaseEntity } from './uuid-base.entity';
   unique: true,
   where: '"sku" IS NOT NULL',
 })
+@Index('UQ_items_barcode_not_null', ['barcode'], {
+  unique: true,
+  where: '"barcode" IS NOT NULL',
+})
 export class Item extends UuidBaseEntity {
   /** Unique when set (partial unique index `UQ_items_sku_not_null`). */
   @Column({ type: 'varchar', length: 80, nullable: true })
   sku: string | null;
+
+  /** Unique when set (scan / POS lookup). */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  barcode: string | null;
 
   @Column({ type: 'text' })
   description: string;

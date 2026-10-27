@@ -73,12 +73,14 @@ export class StockTransfersService {
     });
   }
 
+  /**
+   * Create a PENDING transfer and reserve source qty (does not move stock yet).
+   * Pass `shipImmediately: true` to ship+receive in one step (legacy one-shot).
+   */
   async create(dto: CreateStockTransferDto, userId?: string) {
     if (dto.fromLocationId === dto.toLocationId) {
       throw new BadRequestException('Source and destination must differ');
     }
-
-    const stockChanges: StockQuantityChange[] = [];
 
     const transferId = await this.dataSource.transaction(async (manager) => {
       const transferRepo = manager.getRepository(StockTransfer);
@@ -94,22 +96,61 @@ export class StockTransfersService {
             Object.assign(new StockTransferLine(), {
               itemId: l.itemId,
               quantity: l.quantity.toFixed(3),
+              unitCost: null,
             }),
           ),
         }),
       );
 
       for (const line of dto.lines) {
-        const previousQuantity = await this.stockService.getQuantity(
+        await this.stockService.reserve(
           dto.fromLocationId,
+          line.itemId,
+          line.quantity,
+          manager,
+        );
+      }
+
+      return transfer.id;
+    });
+
+    if (dto.shipImmediately) {
+      await this.ship(transferId, userId);
+      return this.receive(transferId, userId);
+    }
+
+    const transfer = await this.findOne(transferId);
+    if (!transfer) throw new NotFoundException('Stock transfer not found');
+    return transfer;
+  }
+
+  /** PENDING → IN_TRANSIT: release reservation and TRANSFER_OUT from source. */
+  async ship(id: string, userId?: string) {
+    const stockChanges: StockQuantityChange[] = [];
+
+    await this.dataSource.transaction(async (manager) => {
+      const transferRepo = manager.getRepository(StockTransfer);
+      const transfer = await transferRepo.findOne({
+        where: { id },
+        relations: { lines: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!transfer) throw new NotFoundException('Stock transfer not found');
+      if (transfer.status !== TransferStatus.PENDING) {
+        throw new BadRequestException('Only PENDING transfers can be shipped');
+      }
+
+      for (const line of transfer.lines) {
+        const qty = parseFloat(line.quantity);
+        const previousQuantity = await this.stockService.getQuantity(
+          transfer.fromLocationId,
           line.itemId,
           manager,
         );
-        await this.stockService.transfer(
-          dto.fromLocationId,
-          dto.toLocationId,
+        const unitCost = await this.stockService.shipOutbound(
+          transfer.fromLocationId,
           line.itemId,
-          line.quantity,
+          qty,
           manager,
           {
             refType: 'stock_transfer',
@@ -117,25 +158,66 @@ export class StockTransfersService {
             createdById: userId ?? null,
           },
         );
+        line.unitCost = unitCost.toFixed(2);
         stockChanges.push({
-          locationId: dto.fromLocationId,
+          locationId: transfer.fromLocationId,
           itemId: line.itemId,
           previousQuantity,
         });
       }
 
-      transfer.status = TransferStatus.COMPLETED;
+      transfer.status = TransferStatus.IN_TRANSIT;
       await transferRepo.save(transfer);
-      return transfer.id;
     });
 
     await this.lowStockService.evaluateChanges(stockChanges);
+    const transfer = await this.findOne(id);
+    if (!transfer) throw new NotFoundException('Stock transfer not found');
+    return transfer;
+  }
 
-    const transfer = await this.findOne(transferId);
+  /** IN_TRANSIT → COMPLETED: TRANSFER_IN at destination. */
+  async receive(id: string, userId?: string) {
+    await this.dataSource.transaction(async (manager) => {
+      const transferRepo = manager.getRepository(StockTransfer);
+      const transfer = await transferRepo.findOne({
+        where: { id },
+        relations: { lines: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!transfer) throw new NotFoundException('Stock transfer not found');
+      if (transfer.status !== TransferStatus.IN_TRANSIT) {
+        throw new BadRequestException(
+          'Only IN_TRANSIT transfers can be received',
+        );
+      }
+
+      for (const line of transfer.lines) {
+        const qty = parseFloat(line.quantity);
+        const unitCost = parseFloat(line.unitCost ?? '0');
+        await this.stockService.receiveInbound(
+          transfer.toLocationId,
+          line.itemId,
+          qty,
+          unitCost,
+          manager,
+          {
+            refType: 'stock_transfer',
+            refId: transfer.id,
+            createdById: userId ?? null,
+          },
+        );
+      }
+
+      transfer.status = TransferStatus.COMPLETED;
+      await transferRepo.save(transfer);
+    });
+
+    const transfer = await this.findOne(id);
     if (!transfer) throw new NotFoundException('Stock transfer not found');
 
     await this.notifications.onStockTransferCompleted({
-      transferId,
+      transferId: id,
       fromLocationName: transfer.fromLocation?.name ?? 'Unknown',
       toLocationName: transfer.toLocation?.name ?? 'Unknown',
       lineCount: transfer.lines.length,
@@ -145,14 +227,42 @@ export class StockTransfersService {
     return transfer;
   }
 
+  /**
+   * Cancel PENDING (release reserves) or void COMPLETED (reverse stock).
+   * IN_TRANSIT cannot be cancelled here — receive or admin reverse required.
+   */
   async void(id: string) {
     const transfer = await this.transferRepo.findOne({
       where: { id },
       relations: { lines: true },
     });
     if (!transfer) throw new NotFoundException('Stock transfer not found');
+
+    if (transfer.status === TransferStatus.PENDING) {
+      await this.dataSource.transaction(async (manager) => {
+        const transferRepo = manager.getRepository(StockTransfer);
+        for (const line of transfer.lines) {
+          await this.stockService.releaseReservation(
+            transfer.fromLocationId,
+            line.itemId,
+            parseFloat(line.quantity),
+            manager,
+          );
+        }
+        transfer.status = TransferStatus.CANCELLED;
+        await transferRepo.save(transfer);
+      });
+      return this.findOne(id);
+    }
+
+    if (transfer.status === TransferStatus.IN_TRANSIT) {
+      throw new BadRequestException(
+        'Cannot cancel an in-transit transfer; receive it first or contact an admin',
+      );
+    }
+
     if (transfer.status !== TransferStatus.COMPLETED) {
-      throw new BadRequestException('Only completed transfers can be voided');
+      throw new BadRequestException('Transfer cannot be voided in this status');
     }
 
     await this.dataSource.transaction(async (manager) => {

@@ -23,6 +23,13 @@ export class StockLevel extends UuidBaseEntity {
   @Column({ type: 'decimal', precision: 14, scale: 3, default: 0 })
   quantity: string;
 
+  /**
+   * Qty committed but still on-hand (holds / pending transfers).
+   * Available = quantity − reserved.
+   */
+  @Column({ type: 'decimal', precision: 14, scale: 3, default: 0 })
+  reserved: string;
+
   @Column({
     name: 'purchase_price',
     type: 'decimal',

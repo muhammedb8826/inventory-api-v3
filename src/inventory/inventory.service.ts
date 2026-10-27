@@ -193,7 +193,46 @@ export class InventoryService {
       relations: { item: true, location: true },
     });
     if (!stock) throw new NotFoundException('Inventory record not found');
-    return this.attachItemImageUrl(stock, requestBaseUrl);
+    return this.withAvailability(
+      this.attachItemImageUrl(stock, requestBaseUrl),
+    );
+  }
+
+  /** Lookup stock rows by barcode (or SKU fallback) for POS scan. */
+  async findByBarcode(
+    code: string,
+    locationId?: string,
+    requestBaseUrl?: string,
+  ) {
+    const trimmed = code.trim();
+    if (!trimmed) throw new BadRequestException('code is required');
+
+    const qb = this.stockRepo
+      .createQueryBuilder('stock')
+      .leftJoinAndSelect('stock.item', 'item')
+      .leftJoinAndSelect('stock.location', 'location')
+      .where('(item.barcode = :code OR item.sku = :code)', { code: trimmed })
+      .andWhere('item.is_active = true');
+
+    if (locationId) {
+      qb.andWhere('stock.location_id = :locationId', { locationId });
+    }
+
+    const rows = await qb.getMany();
+    if (!rows.length) {
+      throw new NotFoundException('No item found for barcode/SKU');
+    }
+    return this.attachItemImageUrls(rows, requestBaseUrl).map((r) =>
+      this.withAvailability(r),
+    );
+  }
+
+  private withAvailability<T extends StockLevel>(stock: T) {
+    const qty = parseFloat(stock.quantity);
+    const reserved = parseFloat(stock.reserved ?? '0');
+    return Object.assign(stock, {
+      available: (qty - reserved).toFixed(3),
+    });
   }
 
   private isUniqueViolation(err: unknown): boolean {
@@ -208,29 +247,57 @@ export class InventoryService {
     await this.ensureLocation(dto.locationId);
     const sku =
       dto.sku === undefined || dto.sku.trim() === '' ? null : dto.sku.trim();
+    const barcode =
+      dto.barcode === undefined || dto.barcode.trim() === ''
+        ? null
+        : dto.barcode.trim();
 
     let item = sku ? await this.itemRepo.findOne({ where: { sku } }) : null;
+    if (!item && barcode) {
+      item = await this.itemRepo.findOne({ where: { barcode } });
+    }
     if (!item) {
       try {
         item = await this.itemRepo.save(
           this.itemRepo.create({
             sku,
+            barcode,
             description: dto.description,
             unit: dto.unit ?? null,
             itemType: dto.itemType,
           }),
         );
       } catch (err) {
-        if (sku && this.isUniqueViolation(err)) {
-          item = await this.itemRepo.findOne({ where: { sku } });
-          if (!item) {
+        if (this.isUniqueViolation(err)) {
+          const msg = String(
+            (err as QueryFailedError).message ?? '',
+          ).toLowerCase();
+          if (msg.includes('barcode')) {
+            throw new ConflictException(
+              'Barcode already in use by another item',
+            );
+          }
+          if (sku) {
+            item = await this.itemRepo.findOne({ where: { sku } });
+            if (!item) {
+              throw new ConflictException('SKU already in use by another item');
+            }
+          } else {
             throw new ConflictException('SKU already in use by another item');
           }
-        } else if (this.isUniqueViolation(err)) {
-          throw new ConflictException('SKU already in use by another item');
         } else {
           throw err;
         }
+      }
+    } else if (barcode && !item.barcode) {
+      item.barcode = barcode;
+      try {
+        await this.itemRepo.save(item);
+      } catch (err) {
+        if (this.isUniqueViolation(err)) {
+          throw new ConflictException('Barcode already in use by another item');
+        }
+        throw err;
       }
     }
 
@@ -262,6 +329,7 @@ export class InventoryService {
     const itemChanged =
       dto.description !== undefined ||
       dto.sku !== undefined ||
+      dto.barcode !== undefined ||
       dto.unit !== undefined ||
       dto.itemType !== undefined;
 
@@ -286,6 +354,23 @@ export class InventoryService {
         }
         stock.item.sku = sku;
       }
+      if (dto.barcode !== undefined) {
+        const barcode =
+          dto.barcode === null || dto.barcode.trim() === ''
+            ? null
+            : dto.barcode.trim();
+        if (barcode) {
+          const existing = await this.itemRepo.findOne({
+            where: { barcode, id: Not(stock.itemId) },
+          });
+          if (existing) {
+            throw new ConflictException(
+              'Barcode already in use by another item',
+            );
+          }
+        }
+        stock.item.barcode = barcode;
+      }
       if (dto.unit !== undefined) {
         stock.item.unit =
           dto.unit === null || dto.unit.trim() === '' ? null : dto.unit.trim();
@@ -297,7 +382,14 @@ export class InventoryService {
         await this.itemRepo.save(stock.item);
       } catch (err) {
         if (this.isUniqueViolation(err)) {
-          throw new ConflictException('SKU already in use by another item');
+          const msg = String(
+            (err as QueryFailedError).message ?? '',
+          ).toLowerCase();
+          throw new ConflictException(
+            msg.includes('barcode')
+              ? 'Barcode already in use by another item'
+              : 'SKU already in use by another item',
+          );
         }
         throw err;
       }

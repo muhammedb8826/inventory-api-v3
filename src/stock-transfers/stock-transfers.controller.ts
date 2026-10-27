@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { StockTransferListQueryDto } from './dto/stock-transfer-list-query.dto';
@@ -17,6 +18,8 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { CreateStockTransferDto } from './dto/stock-transfer.dto';
 import { StockTransfersService } from './stock-transfers.service';
 
+@ApiTags('stock-transfers')
+@ApiBearerAuth()
 @Controller('stock-transfers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class StockTransfersController {
@@ -36,8 +39,23 @@ export class StockTransfersController {
 
   @Post()
   @RequirePermissions('stock_transfer.write')
-  create(@Body() dto: CreateStockTransferDto, @CurrentUser() user: JwtPayload) {
+  create(
+    @Body() dto: CreateStockTransferDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
     return this.service.create(dto, user.sub);
+  }
+
+  @Post(':id/ship')
+  @RequirePermissions('stock_transfer.write')
+  ship(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.ship(id, user.sub);
+  }
+
+  @Post(':id/receive')
+  @RequirePermissions('stock_transfer.write')
+  receive(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.receive(id, user.sub);
   }
 
   @Delete(':id')

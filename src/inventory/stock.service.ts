@@ -94,6 +94,75 @@ export class StockService {
     return row ? parseFloat(row.quantity) : 0;
   }
 
+  /** On-hand qty minus reserved (sellable / transferable). */
+  async getAvailable(
+    locationId: string,
+    itemId: string,
+    manager?: EntityManager,
+    options?: { forUpdate?: boolean },
+  ): Promise<number> {
+    const row = await this.getStock(locationId, itemId, manager, options);
+    if (!row) return 0;
+    return parseFloat(row.quantity) - parseFloat(row.reserved ?? '0');
+  }
+
+  /**
+   * Commit qty for a hold / pending transfer. Fails if available &lt; quantity.
+   */
+  async reserve(
+    locationId: string,
+    itemId: string,
+    quantity: number,
+    manager?: EntityManager,
+  ): Promise<StockLevel> {
+    if (!manager) {
+      return this.dataSource.transaction((tx) =>
+        this.reserve(locationId, itemId, quantity, tx),
+      );
+    }
+    if (quantity <= 0) {
+      throw new BadRequestException('Reserve quantity must be positive');
+    }
+    const { stock } = this.repos(manager);
+    const row = await this.getOrCreateLocked(locationId, itemId, manager);
+    const available =
+      parseFloat(row.quantity) - parseFloat(row.reserved ?? '0');
+    if (available < quantity) {
+      throw new BadRequestException(
+        `Insufficient available stock to reserve. Available: ${available}, requested: ${quantity}`,
+      );
+    }
+    row.reserved = (parseFloat(row.reserved ?? '0') + quantity).toFixed(3);
+    return stock.save(row);
+  }
+
+  /** Release a previous reservation (cancel hold / pending transfer). */
+  async releaseReservation(
+    locationId: string,
+    itemId: string,
+    quantity: number,
+    manager?: EntityManager,
+  ): Promise<StockLevel> {
+    if (!manager) {
+      return this.dataSource.transaction((tx) =>
+        this.releaseReservation(locationId, itemId, quantity, tx),
+      );
+    }
+    if (quantity <= 0) {
+      throw new BadRequestException('Release quantity must be positive');
+    }
+    const { stock } = this.repos(manager);
+    const row = await this.getOrCreateLocked(locationId, itemId, manager);
+    const reserved = parseFloat(row.reserved ?? '0');
+    if (reserved < quantity) {
+      throw new BadRequestException(
+        `Cannot release more than reserved. Reserved: ${reserved}, requested: ${quantity}`,
+      );
+    }
+    row.reserved = (reserved - quantity).toFixed(3);
+    return stock.save(row);
+  }
+
   /**
    * Ensure a locked stock_levels row exists (qty 0) for location+item.
    * Handles concurrent first-insert races via unique constraint retry.
@@ -116,6 +185,7 @@ export class StockService {
           locationId,
           itemId,
           quantity: '0',
+          reserved: '0',
           purchasePrice: String(initialPurchasePrice),
         }),
       );
@@ -197,6 +267,96 @@ export class StockService {
     return saved;
   }
 
+  /**
+   * Ship previously reserved stock out of source (PENDING → IN_TRANSIT).
+   * Releases reservation then decrements on-hand with TRANSFER_OUT.
+   */
+  async shipOutbound(
+    locationId: string,
+    itemId: string,
+    quantity: number,
+    manager?: EntityManager,
+    meta?: {
+      refType?: string | null;
+      refId?: string | null;
+      createdById?: string | null;
+      notes?: string | null;
+    },
+  ): Promise<number> {
+    if (!manager) {
+      return this.dataSource.transaction((tx) =>
+        this.shipOutbound(locationId, itemId, quantity, tx, meta),
+      );
+    }
+    if (quantity <= 0) {
+      throw new BadRequestException('Quantity must be positive');
+    }
+    const row = await this.getOrCreateLocked(locationId, itemId, manager);
+    const purchasePrice = parseFloat(row.purchasePrice);
+    await this.releaseReservation(locationId, itemId, quantity, manager);
+    await this.adjust(
+      {
+        locationId,
+        itemId,
+        quantityDelta: -quantity,
+        movement: {
+          type: StockMovementType.TRANSFER_OUT,
+          refType: meta?.refType ?? 'stock_transfer',
+          refId: meta?.refId ?? null,
+          createdById: meta?.createdById ?? null,
+          notes: meta?.notes ?? null,
+        },
+      },
+      manager,
+    );
+    return purchasePrice;
+  }
+
+  /** Receive stock at destination (IN_TRANSIT → COMPLETED). */
+  async receiveInbound(
+    locationId: string,
+    itemId: string,
+    quantity: number,
+    purchasePrice: number,
+    manager?: EntityManager,
+    meta?: {
+      refType?: string | null;
+      refId?: string | null;
+      createdById?: string | null;
+      notes?: string | null;
+    },
+  ): Promise<void> {
+    if (!manager) {
+      return this.dataSource.transaction((tx) =>
+        this.receiveInbound(
+          locationId,
+          itemId,
+          quantity,
+          purchasePrice,
+          tx,
+          meta,
+        ),
+      );
+    }
+    await this.adjust(
+      {
+        locationId,
+        itemId,
+        quantityDelta: quantity,
+        purchasePrice,
+        movement: {
+          type: StockMovementType.TRANSFER_IN,
+          refType: meta?.refType ?? 'stock_transfer',
+          refId: meta?.refId ?? null,
+          createdById: meta?.createdById ?? null,
+          notes: meta?.notes ?? null,
+        },
+      },
+      manager,
+    );
+  }
+
+  /** One-shot transfer (ship + receive). Prefer multi-step for warehouse workflows. */
   async transfer(
     fromLocationId: string,
     toLocationId: string,
@@ -220,7 +380,6 @@ export class StockService {
       throw new BadRequestException('Quantity must be positive');
     }
 
-    // Lock source then destination in stable id order to reduce deadlock risk.
     const [firstId, secondId] =
       fromLocationId < toLocationId
         ? [fromLocationId, toLocationId]
@@ -230,48 +389,30 @@ export class StockService {
       await this.getOrCreateLocked(secondId, itemId, manager);
     }
 
-    const fromStock = await this.getStock(fromLocationId, itemId, manager, {
+    const available = await this.getAvailable(fromLocationId, itemId, manager, {
       forUpdate: true,
     });
-    const available = fromStock ? parseFloat(fromStock.quantity) : 0;
     if (available < quantity) {
       throw new BadRequestException(
         `Insufficient stock. Available: ${available}, requested: ${quantity}`,
       );
     }
 
-    const purchasePrice = fromStock ? parseFloat(fromStock.purchasePrice) : 0;
-    const movementBase = {
-      refType: meta?.refType ?? 'stock_transfer',
-      refId: meta?.refId ?? null,
-      createdById: meta?.createdById ?? null,
-      notes: meta?.notes ?? null,
-    };
-
-    await this.adjust(
-      {
-        locationId: fromLocationId,
-        itemId,
-        quantityDelta: -quantity,
-        movement: {
-          type: StockMovementType.TRANSFER_OUT,
-          ...movementBase,
-        },
-      },
+    await this.reserve(fromLocationId, itemId, quantity, manager);
+    const purchasePrice = await this.shipOutbound(
+      fromLocationId,
+      itemId,
+      quantity,
       manager,
+      meta,
     );
-    await this.adjust(
-      {
-        locationId: toLocationId,
-        itemId,
-        quantityDelta: quantity,
-        purchasePrice,
-        movement: {
-          type: StockMovementType.TRANSFER_IN,
-          ...movementBase,
-        },
-      },
+    await this.receiveInbound(
+      toLocationId,
+      itemId,
+      quantity,
+      purchasePrice,
       manager,
+      meta,
     );
   }
 
@@ -288,7 +429,7 @@ export class StockService {
       a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0,
     );
     for (const line of ordered) {
-      const available = await this.getQuantity(
+      const available = await this.getAvailable(
         locationId,
         line.itemId,
         manager,

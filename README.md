@@ -500,6 +500,18 @@ npm run test:e2e
 ```
 
 
+## P2 inventory depth (partial)
+
+Shipped in this pass:
+
+- **Reservations** — `stock_levels.reserved`; available = qty − reserved; sales/transfers check available
+- **Multi-step transfers** — `PENDING` (reserve) → `POST …/ship` (`IN_TRANSIT`) → `POST …/receive` (`COMPLETED`); `shipImmediately` for one-shot
+- **Barcodes** — `items.barcode` + `GET /inventory/lookup?code=`
+- **Idempotency** — `Idempotency-Key` on POST sales / purchases / adjustments / sale returns
+- **Sale returns** — `POST /sales/:id/returns` restocks with `SALE_RETURN` ledger
+
+Deferred for a later pass: lots/serials (P2-4), cycle counts (P2-5), location-scoped RBAC (P2-6), observability pack (P2-9). Multi-tenant (P2-8) skipped for single-business.
+
 ## Recent improvements
 
 - Database transactions on purchases, sales, transfers, expenses, and credit payments

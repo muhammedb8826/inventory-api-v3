@@ -14,6 +14,16 @@ export class StockTransferLine extends UuidBaseEntity {
   @Column({ type: 'decimal', precision: 14, scale: 3 })
   quantity: string;
 
+  /** Snapshot of source unit cost when shipped (IN_TRANSIT). */
+  @Column({
+    name: 'unit_cost',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+  })
+  unitCost: string | null;
+
   @ManyToOne(() => StockTransfer, (transfer) => transfer.lines, {
     onDelete: 'CASCADE',
   })

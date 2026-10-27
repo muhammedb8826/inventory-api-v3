@@ -51,6 +51,8 @@ export enum CreditStatus {
 
 export enum TransferStatus {
   PENDING = 'PENDING',
+  /** Left source; not yet received at destination. */
+  IN_TRANSIT = 'IN_TRANSIT',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
 }
@@ -90,6 +92,7 @@ export enum StockMovementType {
   SALE = 'SALE',
   SALE_VOID = 'SALE_VOID',
   SALE_REVERSAL = 'SALE_REVERSAL',
+  SALE_RETURN = 'SALE_RETURN',
   PURCHASE = 'PURCHASE',
   PURCHASE_VOID = 'PURCHASE_VOID',
   PURCHASE_REVERSAL = 'PURCHASE_REVERSAL',

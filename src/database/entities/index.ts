@@ -30,6 +30,9 @@ export { ProductionOrderLine } from './production-order-line.entity';
 export { CustomerInquiry } from './customer-inquiry.entity';
 export { CustomerInquiryLine } from './customer-inquiry-line.entity';
 export { SiteBranding } from './site-branding.entity';
+export { IdempotencyKey } from './idempotency-key.entity';
+export { SaleReturn } from './sale-return.entity';
+export { SaleReturnLine } from './sale-return-line.entity';
 
 import { Permission } from './permission.entity';
 import { Role } from './role.entity';
@@ -63,6 +66,9 @@ import { ProductionOrderLine } from './production-order-line.entity';
 import { CustomerInquiry } from './customer-inquiry.entity';
 import { CustomerInquiryLine } from './customer-inquiry-line.entity';
 import { SiteBranding } from './site-branding.entity';
+import { IdempotencyKey } from './idempotency-key.entity';
+import { SaleReturn } from './sale-return.entity';
+import { SaleReturnLine } from './sale-return-line.entity';
 
 export const entities = [
   Permission,
@@ -97,4 +103,7 @@ export const entities = [
   CustomerInquiry,
   CustomerInquiryLine,
   SiteBranding,
+  IdempotencyKey,
+  SaleReturn,
+  SaleReturnLine,
 ];

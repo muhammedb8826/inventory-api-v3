@@ -29,6 +29,8 @@ import { BanksService } from '../banks/banks.service';
 import { CustomerCredit } from '../database/entities/customer-credit.entity';
 import { SaleLine } from '../database/entities/sale-line.entity';
 import { Sale } from '../database/entities/sale.entity';
+import { SaleReturn } from '../database/entities/sale-return.entity';
+import { SaleReturnLine } from '../database/entities/sale-return-line.entity';
 import { User } from '../database/entities/user.entity';
 import { StockService } from '../inventory/stock.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -826,5 +828,113 @@ export class SalesService {
       ...sale,
       stockWarnings: result.stockWarnings,
     };
+  }
+
+  /**
+   * Partial/full RMA against an active sale — restocks inventory with SALE_RETURN ledger.
+   * Does not reverse bank/credit (finance follow-up); stock + audit trail only.
+   */
+  async createReturn(
+    saleId: string,
+    dto: {
+      lines: { saleLineId: string; quantity: number }[];
+      notes?: string;
+    },
+    userId?: string,
+  ) {
+    const sale = await this.saleRepo.findOne({
+      where: { id: saleId },
+      relations: { lines: true },
+    });
+    if (!sale) throw new NotFoundException('Sale not found');
+    if (sale.status === DocumentStatus.VOIDED) {
+      throw new BadRequestException('Cannot return a voided sale');
+    }
+
+    const priorReturns = await this.dataSource.getRepository(SaleReturn).find({
+      where: { saleId, status: DocumentStatus.ACTIVE },
+      relations: { lines: true },
+    });
+    const returnedByLine = new Map<string, number>();
+    for (const ret of priorReturns) {
+      for (const line of ret.lines ?? []) {
+        if (!line.saleLineId) continue;
+        returnedByLine.set(
+          line.saleLineId,
+          (returnedByLine.get(line.saleLineId) ?? 0) +
+            parseFloat(line.quantity),
+        );
+      }
+    }
+
+    const returnId = await this.dataSource.transaction(async (manager) => {
+      const returnRepo = manager.getRepository(SaleReturn);
+      const returnLines: SaleReturnLine[] = [];
+
+      for (const reqLine of dto.lines) {
+        const saleLine = sale.lines.find((l) => l.id === reqLine.saleLineId);
+        if (!saleLine) {
+          throw new BadRequestException(
+            `Sale line ${reqLine.saleLineId} not found on this sale`,
+          );
+        }
+        const already = returnedByLine.get(saleLine.id) ?? 0;
+        const soldQty = parseFloat(saleLine.quantity);
+        if (already + reqLine.quantity > soldQty + 1e-9) {
+          throw new BadRequestException(
+            `Return qty exceeds remaining for line ${saleLine.id}. Sold ${soldQty}, already returned ${already}, requested ${reqLine.quantity}`,
+          );
+        }
+
+        returnLines.push(
+          Object.assign(new SaleReturnLine(), {
+            saleLineId: saleLine.id,
+            itemId: saleLine.itemId,
+            quantity: reqLine.quantity.toFixed(3),
+            unitPrice: saleLine.unitPrice,
+          }),
+        );
+      }
+
+      const saved = await returnRepo.save(
+        returnRepo.create({
+          saleId,
+          locationId: sale.locationId,
+          notes: dto.notes ?? null,
+          status: DocumentStatus.ACTIVE,
+          createdById: userId ?? null,
+          lines: returnLines,
+        }),
+      );
+
+      for (const line of saved.lines) {
+        await this.stockService.adjust(
+          {
+            locationId: sale.locationId,
+            itemId: line.itemId,
+            quantityDelta: parseFloat(line.quantity),
+            movement: {
+              type: StockMovementType.SALE_RETURN,
+              refType: 'sale_return',
+              refId: saved.id,
+              createdById: userId ?? null,
+              notes: dto.notes ?? 'Customer return',
+            },
+          },
+          manager,
+        );
+      }
+
+      return saved.id;
+    });
+
+    return this.dataSource.getRepository(SaleReturn).findOne({
+      where: { id: returnId },
+      relations: {
+        lines: { item: true },
+        sale: true,
+        location: true,
+      },
+    });
   }
 }

@@ -15,6 +15,10 @@ export class CreateInventoryDto {
   @IsString()
   sku?: string;
 
+  @IsOptional()
+  @IsString()
+  barcode?: string;
+
   @IsString()
   description: string;
 
@@ -55,6 +59,11 @@ export class UpdateInventoryDto {
   @ValidateIf((_, value) => value !== null)
   @IsString()
   sku?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  barcode?: string | null;
 
   @IsOptional()
   @ValidateIf((_, value) => value !== null)

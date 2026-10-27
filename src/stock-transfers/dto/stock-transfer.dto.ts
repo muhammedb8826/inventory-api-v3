@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -30,6 +31,15 @@ export class CreateStockTransferDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /**
+   * When true, ship + receive immediately (legacy one-shot).
+   * Default false → PENDING with source reservation.
+   */
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  shipImmediately?: boolean;
 
   @IsArray()
   @ArrayMinSize(1)
