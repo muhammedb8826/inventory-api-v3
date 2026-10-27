@@ -280,6 +280,7 @@ All report endpoints require `reports.read`. Optional query filters on date-base
 |----------|-------------------|
 | `/inventory` | `locationId`, `search` (item description, SKU) |
 | `/inventory/adjustments` | `locationId`, `itemId`, `direction` (`in` \| `out`), `reason`, `search` |
+| `/inventory/movements` | `locationId`, `itemId`, `type`, `refType`, `refId`, `search` |
 | `/suppliers`, `/customers` | `search` (name, email, phone) |
 | `/inquiries` | `search` (name, email, phone, subject, message), `status`, `source`, `priority`, `customerId`, `assignedToUserId`, `assignmentStatus`, `itemId` (any line) |
 | `/purchases` | `includeVoided`, `supplierId`, `locationId`, `paymentMethod`, `search` (notes, supplier name) |
@@ -404,6 +405,7 @@ All report endpoints require `reports.read`. Optional query filters on date-base
 | GET | `/inventory/low-stock?locationId=` | `inventory.read` |
 | GET | `/inventory/adjustments` | `inventory.read` |
 | POST | `/inventory/adjustments` | `inventory.adjust` |
+| GET | `/inventory/movements` | `inventory.read` |
 | GET | `/inventory/:id` | `inventory.read` |
 | POST | `/inventory` | `inventory.write` |
 | PATCH | `/inventory/:id` | `inventory.write` |
@@ -539,6 +541,16 @@ Rules:
 - Response includes `quantityBefore`, `quantityAfter`, `createdBy`
 
 **List** `GET /inventory/adjustments` — filters: `locationId`, `itemId`, `direction`, `reason`, `search`, `from`/`to`, `page`/`limit`
+
+### Stock movements (immutable ledger)
+
+Every quantity change (sale, purchase, transfer, production, adjustment, opening) writes a row. Stock levels remain the current balance cache; movements are the audit trail.
+
+**List** `GET /inventory/movements` — `inventory.read`
+
+Filters: `locationId`, `itemId`, `type` (`SALE` \| `SALE_VOID` \| `SALE_REVERSAL` \| `PURCHASE` \| `PURCHASE_VOID` \| `PURCHASE_REVERSAL` \| `TRANSFER_OUT` \| `TRANSFER_IN` \| `ADJUSTMENT` \| `PRODUCTION_ISSUE` \| `PRODUCTION_RECEIPT` \| `PRODUCTION_REVERSE` \| `OPENING` \| `IMPORT`), `refType`, `refId`, `search`, `from`/`to`, `page`/`limit`
+
+Response row fields: `id`, `locationId`, `itemId`, `type`, `quantityDelta`, `quantityBefore`, `quantityAfter`, `unitCost`, `refType`, `refId`, `notes`, `createdById`, `createdAt`, plus nested `item`, `location`, `createdBy`.
 
 ```json
 {
@@ -1546,7 +1558,7 @@ Open [http://localhost:3000](http://localhost:3000).
 |----------|-------------|
 | `/login` | `POST /auth/login` |
 | `/dashboard` | `GET /dashboard` |
-| `/inventory` | `/inventory`, import, `/inventory/adjustments` |
+| `/inventory` | `/inventory`, import, `/inventory/adjustments`, `/inventory/movements` |
 | `/boms` | `/boms` |
 | `/production-orders` | `/production-orders` |
 | `/stock-transfers`, `/stock-transfers/[id]` | `/stock-transfers` |

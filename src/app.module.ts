@@ -15,6 +15,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { InquiriesModule } from './inquiries/inquiries.module';
 import { LocationsModule } from './locations/locations.module';
+import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { ProductionModule } from './production/production.module';
@@ -43,6 +44,7 @@ import { HealthController } from './health.controller';
     PermissionsModule,
     LocationsModule,
     NotificationsModule,
+    MessagesModule,
     InventoryModule,
     BomsModule,
     ProductionModule,

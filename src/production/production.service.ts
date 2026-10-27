@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { ProductionOrderStatus } from '../common/enums';
+import { ProductionOrderStatus, StockMovementType } from '../common/enums';
 import {
   applyDateRangeToQb,
   applyIlikeSearch,
@@ -246,6 +246,11 @@ export class ProductionService {
             locationId: order.locationId,
             itemId: row.line.componentItemId,
             quantityDelta: -row.quantity,
+            movement: {
+              type: StockMovementType.PRODUCTION_ISSUE,
+              refType: 'production_order',
+              refId: order.id,
+            },
           },
           manager,
         );
@@ -364,6 +369,12 @@ export class ProductionService {
             locationId: order.locationId,
             itemId: row.line.componentItemId,
             quantityDelta: -row.shortfall,
+            movement: {
+              type: StockMovementType.PRODUCTION_ISSUE,
+              refType: 'production_order',
+              refId: order.id,
+              notes: 'Auto-issue on complete',
+            },
           },
           manager,
         );
@@ -401,6 +412,11 @@ export class ProductionService {
           itemId: order.finishedItemId,
           quantityDelta: dto.quantity,
           purchasePrice: fgUnitCost,
+          movement: {
+            type: StockMovementType.PRODUCTION_RECEIPT,
+            refType: 'production_order',
+            refId: order.id,
+          },
         },
         manager,
       );
@@ -474,6 +490,12 @@ export class ProductionService {
             locationId: order.locationId,
             itemId: line.componentItemId,
             quantityDelta: issued,
+            movement: {
+              type: StockMovementType.PRODUCTION_REVERSE,
+              refType: 'production_order',
+              refId: order.id,
+              notes: 'Production order cancelled — return issued materials',
+            },
           },
           manager,
         );

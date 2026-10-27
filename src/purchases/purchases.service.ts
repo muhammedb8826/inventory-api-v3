@@ -11,6 +11,7 @@ import {
   CreditStatus,
   DocumentStatus,
   PaymentMethod,
+  StockMovementType,
 } from '../common/enums';
 import {
   applyDateRangeToQb,
@@ -224,6 +225,13 @@ export class PurchasesService {
             locationId: oldLocationId,
             itemId: line.itemId,
             quantityDelta: -parseFloat(line.quantity),
+            movement: {
+              type: StockMovementType.PURCHASE_REVERSAL,
+              refType: 'purchase',
+              refId: purchase.id,
+              createdById: userId ?? null,
+              notes: 'Purchase line update — reverse prior qty',
+            },
           },
           manager,
         );
@@ -271,6 +279,12 @@ export class PurchasesService {
             itemId: line.itemId,
             quantityDelta: line.quantity,
             purchasePrice: line.unitPrice,
+            movement: {
+              type: StockMovementType.PURCHASE,
+              refType: 'purchase',
+              refId: purchase.id,
+              createdById: userId ?? null,
+            },
           },
           manager,
         );
@@ -341,6 +355,13 @@ export class PurchasesService {
             locationId: purchase.locationId,
             itemId: line.itemId,
             quantityDelta: -parseFloat(line.quantity),
+            movement: {
+              type: StockMovementType.PURCHASE_VOID,
+              refType: 'purchase',
+              refId: purchase.id,
+              createdById: userId ?? null,
+              notes: 'Purchase voided',
+            },
           },
           manager,
         );
@@ -426,6 +447,12 @@ export class PurchasesService {
             itemId: line.itemId,
             quantityDelta: line.quantity,
             purchasePrice: line.unitPrice,
+            movement: {
+              type: StockMovementType.PURCHASE,
+              refType: 'purchase',
+              refId: purchase.id,
+              createdById: userId ?? null,
+            },
           },
           manager,
         );

@@ -91,6 +91,16 @@ export const PERMISSION_DEFINITIONS = [
     name: 'Manage site settings / branding',
     module: 'settings',
   },
+  {
+    code: 'messages.read',
+    name: 'View internal messages',
+    module: 'messages',
+  },
+  {
+    code: 'messages.write',
+    name: 'Send internal messages',
+    module: 'messages',
+  },
 ] as const;
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -111,6 +121,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'profit_loss.read',
     'locations.read',
     'inventory.read',
+    'messages.read',
+    'messages.write',
   ],
   Purchaser: [
     'purchase.read',
@@ -122,6 +134,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'bank.read',
     'inventory.read',
     'locations.read',
+    'messages.read',
+    'messages.write',
   ],
   'Stock Keeper': [
     'inventory.read',
@@ -135,5 +149,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'stock_transfer.read',
     'stock_transfer.write',
     'locations.read',
+    'messages.read',
+    'messages.write',
   ],
 };

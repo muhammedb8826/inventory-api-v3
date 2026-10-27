@@ -11,6 +11,7 @@ import { UuidBaseEntity } from './uuid-base.entity';
 
 @Entity('items')
 export class Item extends UuidBaseEntity {
+  /** Unique when set (partial unique index `UQ_items_sku_not_null`). */
   @Column({ type: 'varchar', length: 80, nullable: true })
   sku: string | null;
 

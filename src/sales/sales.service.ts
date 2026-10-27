@@ -14,6 +14,7 @@ import {
   DEFAULT_COMMISSION_PERCENT,
   DocumentStatus,
   PaymentMethod,
+  StockMovementType,
 } from '../common/enums';
 import { computeCommissionAmount } from '../common/utils/commission.util';
 import {
@@ -425,6 +426,13 @@ export class SalesService {
             locationId: oldLocationId,
             itemId: line.itemId,
             quantityDelta: parseFloat(line.quantity),
+            movement: {
+              type: StockMovementType.SALE_REVERSAL,
+              refType: 'sale',
+              refId: sale.id,
+              createdById: userId ?? null,
+              notes: 'Sale line update — restore prior qty',
+            },
           },
           manager,
         );
@@ -510,6 +518,12 @@ export class SalesService {
             locationId,
             itemId: line.itemId,
             quantityDelta: -line.quantity,
+            movement: {
+              type: StockMovementType.SALE,
+              refType: 'sale',
+              refId: sale.id,
+              createdById: userId ?? null,
+            },
           },
           manager,
         );
@@ -598,6 +612,13 @@ export class SalesService {
             locationId: sale.locationId,
             itemId: line.itemId,
             quantityDelta: parseFloat(line.quantity),
+            movement: {
+              type: StockMovementType.SALE_VOID,
+              refType: 'sale',
+              refId: sale.id,
+              createdById: userId ?? null,
+              notes: 'Sale voided',
+            },
           },
           manager,
         );
@@ -734,6 +755,12 @@ export class SalesService {
             locationId: dto.locationId,
             itemId: line.itemId,
             quantityDelta: -line.quantity,
+            movement: {
+              type: StockMovementType.SALE,
+              refType: 'sale',
+              refId: sale.id,
+              createdById: userId ?? null,
+            },
           },
           manager,
         );

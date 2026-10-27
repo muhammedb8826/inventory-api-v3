@@ -85,6 +85,24 @@ export enum StockAdjustmentDirection {
   OUT = 'out',
 }
 
+/** Immutable stock ledger movement kinds (all qty changes). */
+export enum StockMovementType {
+  SALE = 'SALE',
+  SALE_VOID = 'SALE_VOID',
+  SALE_REVERSAL = 'SALE_REVERSAL',
+  PURCHASE = 'PURCHASE',
+  PURCHASE_VOID = 'PURCHASE_VOID',
+  PURCHASE_REVERSAL = 'PURCHASE_REVERSAL',
+  TRANSFER_OUT = 'TRANSFER_OUT',
+  TRANSFER_IN = 'TRANSFER_IN',
+  ADJUSTMENT = 'ADJUSTMENT',
+  PRODUCTION_ISSUE = 'PRODUCTION_ISSUE',
+  PRODUCTION_RECEIPT = 'PRODUCTION_RECEIPT',
+  PRODUCTION_REVERSE = 'PRODUCTION_REVERSE',
+  OPENING = 'OPENING',
+  IMPORT = 'IMPORT',
+}
+
 /** Catalog classification for manufacturing / BOM. */
 export enum ItemType {
   RAW = 'RAW',

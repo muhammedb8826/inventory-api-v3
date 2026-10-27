@@ -111,6 +111,11 @@ export class StockTransfersService {
           line.itemId,
           line.quantity,
           manager,
+          {
+            refType: 'stock_transfer',
+            refId: transfer.id,
+            createdById: userId ?? null,
+          },
         );
         stockChanges.push({
           locationId: dto.fromLocationId,
@@ -159,6 +164,11 @@ export class StockTransfersService {
           line.itemId,
           parseFloat(line.quantity),
           manager,
+          {
+            refType: 'stock_transfer',
+            refId: transfer.id,
+            notes: 'Transfer voided',
+          },
         );
       }
       transfer.status = TransferStatus.CANCELLED;
