@@ -4,13 +4,15 @@
 
 There is no checked-in `schema.sql`. Apply schema only via migrations.
 
+The first migration (`1748800000000-InitialSchema`) bootstraps an **empty** database from entity metadata (CI / fresh installs). Later migrations are incremental and idempotent. Databases that already have core tables skip the bootstrap.
+
 ## Local / CI setup
 
 ```bash
 # Create empty database (once)
 # createdb stock_management
 
-# Apply all migrations
+# Apply all migrations (works on empty Postgres)
 npm run migration:run
 
 # Optional seed (admin, roles, Main Warehouse, Cash/Bank)
