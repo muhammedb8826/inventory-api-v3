@@ -420,9 +420,9 @@ src/
   suppliers/ customers/
   purchases/ sales/ credits/ expenses/ banks/
   dashboard/ profit-loss/
-  database/          Entities, seed
+  database/          Entities, migrations, seed
   common/            Guards, DTOs, filters, query helpers
-database/schema.sql
+database/README.md   Schema / migration production notes
 docs/FRONTEND_API.md
 scripts/create-database.ts
 ```
@@ -451,18 +451,35 @@ FTP error `553 Can't open that file` usually means `CPANEL_DIR` is wrong, the fo
 
 ## Production checklist
 
-- [ ] Strong JWT secrets and `DB_SYNCHRONIZE=false`
-- [ ] Run `database/schema.sql` (do not rely on sync)
+- [ ] Strong JWT secrets
+- [ ] `NODE_ENV=production` and `DB_SYNCHRONIZE=false` (sync is **forced off** in production)
+- [ ] Run `npm run migration:run` before start (migrations are the schema source of truth — see `database/README.md`)
 - [ ] Set `DB_SEED=false` after initial seed
 - [ ] Configure `CORS_ORIGIN` for your frontend domain
 - [ ] Use HTTPS reverse proxy (nginx, etc.)
 
 ## Migrations
 
-Run:
+Schema changes ship as TypeORM migrations under `src/database/migrations/` (stock ledger + SKU unique index included). Apply with:
 
 ```bash
 npm run migration:run
+npm run migration:show
+```
+
+Do **not** use `DB_SYNCHRONIZE=true` in production.
+
+## Tests
+
+```bash
+# Unit (includes StockService locking / ledger / weighted avg)
+npm test
+
+# E2E smoke (needs migrated Postgres + env from .env.example)
+# Skip with E2E_SKIP=true when no DB is available
+npm run test:e2e
+
+# CI (`.github/workflows/ci.yml`) runs unit tests + migrations + e2e against Postgres 16
 ```
 
 ## Recent improvements

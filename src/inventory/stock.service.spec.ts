@@ -229,4 +229,155 @@ describe('StockService', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('checkAvailability warns but allows when negative stock is permitted', async () => {
+    stockLevels.set(
+      key('loc-1', 'item-1'),
+      {
+        id: 's1',
+        locationId: 'loc-1',
+        itemId: 'item-1',
+        quantity: '1.000',
+        purchasePrice: '1.00',
+      } as StockLevel,
+    );
+
+    const warnings = await service.checkAvailability(
+      'loc-1',
+      [{ itemId: 'item-1', quantity: 5 }],
+      true,
+      manager,
+    );
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain('available 1');
+  });
+
+  it('allows balance to go negative via adjust (caller enforces policy)', async () => {
+    stockLevels.set(
+      key('loc-1', 'item-1'),
+      {
+        id: 's1',
+        locationId: 'loc-1',
+        itemId: 'item-1',
+        quantity: '2.000',
+        purchasePrice: '5.00',
+      } as StockLevel,
+    );
+
+    const row = await service.adjust(
+      {
+        locationId: 'loc-1',
+        itemId: 'item-1',
+        quantityDelta: -5,
+        movement: { type: StockMovementType.SALE, refType: 'sale', refId: 's1' },
+      },
+      manager,
+    );
+
+    expect(row.quantity).toBe('-3.000');
+    expect(movements[0]).toMatchObject({
+      type: StockMovementType.SALE,
+      quantityBefore: '2.000',
+      quantityAfter: '-3.000',
+      quantityDelta: '-5.000',
+    });
+  });
+
+  it('sale void style reverse restores qty with SALE_VOID ledger', async () => {
+    stockLevels.set(
+      key('loc-1', 'item-1'),
+      {
+        id: 's1',
+        locationId: 'loc-1',
+        itemId: 'item-1',
+        quantity: '7.000',
+        purchasePrice: '3.00',
+      } as StockLevel,
+    );
+
+    await service.adjust(
+      {
+        locationId: 'loc-1',
+        itemId: 'item-1',
+        quantityDelta: -2,
+        movement: { type: StockMovementType.SALE, refType: 'sale', refId: 'sale-1' },
+      },
+      manager,
+    );
+    await service.adjust(
+      {
+        locationId: 'loc-1',
+        itemId: 'item-1',
+        quantityDelta: 2,
+        movement: {
+          type: StockMovementType.SALE_VOID,
+          refType: 'sale',
+          refId: 'sale-1',
+          notes: 'Sale voided',
+        },
+      },
+      manager,
+    );
+
+    expect(stockLevels.get(key('loc-1', 'item-1'))!.quantity).toBe('7.000');
+    expect(movements.map((m) => m.type)).toEqual([
+      StockMovementType.SALE,
+      StockMovementType.SALE_VOID,
+    ]);
+    expect(movements[1].quantityBefore).toBe('5.000');
+    expect(movements[1].quantityAfter).toBe('7.000');
+  });
+
+  it('transfer rejects insufficient source stock', async () => {
+    stockLevels.set(
+      key('from', 'item-1'),
+      {
+        id: 's-from',
+        locationId: 'from',
+        itemId: 'item-1',
+        quantity: '1.000',
+        purchasePrice: '4.00',
+      } as StockLevel,
+    );
+
+    await expect(
+      service.transfer('from', 'to', 'item-1', 3, manager),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(movements).toHaveLength(0);
+  });
+
+  it('uses setLock pessimistic_write when forUpdate', async () => {
+    const setLock = jest.fn();
+    (stockRepo.createQueryBuilder as jest.Mock).mockImplementationOnce(() => {
+      let loc = '';
+      let item = '';
+      const lockedQb = {
+        where: jest.fn((_: string, params: { locationId: string }) => {
+          loc = params.locationId;
+          return lockedQb;
+        }),
+        andWhere: jest.fn((__: string, p: { itemId: string }) => {
+          item = p.itemId;
+          return lockedQb;
+        }),
+        setLock: setLock.mockImplementation(() => lockedQb),
+        getOne: jest.fn(async () => stockLevels.get(key(loc, item)) ?? null),
+      };
+      return lockedQb;
+    });
+
+    stockLevels.set(
+      key('loc-1', 'item-1'),
+      {
+        id: 's1',
+        locationId: 'loc-1',
+        itemId: 'item-1',
+        quantity: '1.000',
+        purchasePrice: '1.00',
+      } as StockLevel,
+    );
+
+    await service.getStock('loc-1', 'item-1', manager, { forUpdate: true });
+    expect(setLock).toHaveBeenCalledWith('pessimistic_write');
+  });
 });

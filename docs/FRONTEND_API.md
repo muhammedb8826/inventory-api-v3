@@ -1531,7 +1531,7 @@ NestJS default:
 ### Backend (this repo)
 
 1. `npm run db:create` (or create `stock_management` in Postgres manually).
-2. Run `database/schema.sql` **or** set `DB_SYNCHRONIZE=true` for dev only.
+2. Run `npm run migration:run` (migrations are the schema source of truth — see `database/README.md`). `DB_SYNCHRONIZE=true` is **dev-only** and ignored when `NODE_ENV=production`.
 3. Set `.env` (`DB_PASSWORD` must be a string; empty breaks pg SASL auth).
 4. `DB_SEED=true` on first run → roles, permissions, admin, default warehouse, **Main Bank** + **Cash** accounts.
 5. `npm run start:dev` → `http://localhost:3001/api`

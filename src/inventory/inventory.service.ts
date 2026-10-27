@@ -11,7 +11,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
-import { DataSource, Not, Repository } from 'typeorm';
+import { DataSource, Not, QueryFailedError, Repository } from 'typeorm';
 import {
   ItemType,
   StockAdjustmentDirection,
@@ -196,20 +196,46 @@ export class InventoryService {
     return this.attachItemImageUrl(stock, requestBaseUrl);
   }
 
+  private isUniqueViolation(err: unknown): boolean {
+    return (
+      err instanceof QueryFailedError &&
+      typeof (err as QueryFailedError & { code?: string }).code === 'string' &&
+      (err as QueryFailedError & { code?: string }).code === '23505'
+    );
+  }
+
   async create(dto: CreateInventoryDto, requestBaseUrl?: string) {
     await this.ensureLocation(dto.locationId);
-    let item = dto.sku
-      ? await this.itemRepo.findOne({ where: { sku: dto.sku } })
+    const sku =
+      dto.sku === undefined || dto.sku.trim() === ''
+        ? null
+        : dto.sku.trim();
+
+    let item = sku
+      ? await this.itemRepo.findOne({ where: { sku } })
       : null;
     if (!item) {
-      item = await this.itemRepo.save(
-        this.itemRepo.create({
-          sku: dto.sku ?? null,
-          description: dto.description,
-          unit: dto.unit ?? null,
-          itemType: dto.itemType,
-        }),
-      );
+      try {
+        item = await this.itemRepo.save(
+          this.itemRepo.create({
+            sku,
+            description: dto.description,
+            unit: dto.unit ?? null,
+            itemType: dto.itemType,
+          }),
+        );
+      } catch (err) {
+        if (sku && this.isUniqueViolation(err)) {
+          item = await this.itemRepo.findOne({ where: { sku } });
+          if (!item) {
+            throw new ConflictException('SKU already in use by another item');
+          }
+        } else if (this.isUniqueViolation(err)) {
+          throw new ConflictException('SKU already in use by another item');
+        } else {
+          throw err;
+        }
+      }
     }
 
     const adjusted = await this.stockService.adjust({
@@ -275,7 +301,14 @@ export class InventoryService {
       if (dto.itemType !== undefined) {
         stock.item.itemType = dto.itemType;
       }
-      await this.itemRepo.save(stock.item);
+      try {
+        await this.itemRepo.save(stock.item);
+      } catch (err) {
+        if (this.isUniqueViolation(err)) {
+          throw new ConflictException('SKU already in use by another item');
+        }
+        throw err;
+      }
     }
 
     if (dto.purchasePrice !== undefined) {

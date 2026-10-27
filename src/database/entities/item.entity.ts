@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   OneToMany,
   UpdateDateColumn,
 } from 'typeorm';
@@ -10,6 +11,10 @@ import { StockLevel } from './stock-level.entity';
 import { UuidBaseEntity } from './uuid-base.entity';
 
 @Entity('items')
+@Index('UQ_items_sku_not_null', ['sku'], {
+  unique: true,
+  where: '"sku" IS NOT NULL',
+})
 export class Item extends UuidBaseEntity {
   /** Unique when set (partial unique index `UQ_items_sku_not_null`). */
   @Column({ type: 'varchar', length: 80, nullable: true })
