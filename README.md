@@ -439,7 +439,7 @@ scripts/create-database.ts
 
 **CI** (`.github/workflows/ci.yml`) runs lint → build → unit → migrate → e2e on every PR/push.
 
-**Deploy** (`.github/workflows/vgate.yml`) runs **only after CI succeeds on `main`**, and uploads a **`dist/` + `package.json`** bundle (not app TypeScript sources).
+**Deploy** is the `deploy` job in the same workflow: after `quality` succeeds on a **push to `main`/`master`** (not on PRs), it FTP-uploads a **`dist/` + `package.json`** bundle. Manual redeploy: Actions → “Deploy VGATE API to cPanel via FTP” → Run workflow.
 
 **GitHub secrets (VGATE)**
 

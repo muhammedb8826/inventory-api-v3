@@ -1,21 +1,20 @@
+# Deploy lives in ci.yml (job "deploy") so it always runs after a green push to main.
+# Kept as a no-op stub so old workflow links / badges do not 404.
 name: Deploy VGATE API to cPanel via FTP
 
-# Deploy only after CI succeeds on main (reproducible dist/ artifact).
 on:
-  workflow_run:
-    workflows: ['CI']
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Manual deploy reason'
+        required: false
+        default: 'manual'
 
 jobs:
   web-deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -34,14 +33,12 @@ jobs:
           mkdir -p deploy
           cp package.json package-lock.json deploy/
           cp -r dist deploy/dist
-          # Migrations + seed sources for post-deploy `npm run migration:run` / seed on the host
           mkdir -p deploy/src/database
           cp -r src/database/migrations deploy/src/database/migrations
           cp -r src/database/entities deploy/src/database/entities
           cp src/database/data-source.ts deploy/src/database/
           cp -r src/database/constants deploy/src/database/constants 2>/dev/null || true
           cp src/seed.ts deploy/src/ 2>/dev/null || true
-          # Minimal tsconfig for typeorm-ts-node migrations on the server
           cp tsconfig.json nest-cli.json deploy/ 2>/dev/null || true
 
       - name: Deploy runtime bundle to cPanel via FTP
