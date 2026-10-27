@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Request, Response } from 'express';
-import { Observable, from, of, switchMap, tap } from 'rxjs';
+import { Observable, from, of, switchMap } from 'rxjs';
 import { IsNull, Repository } from 'typeorm';
 import { IdempotencyKey } from '../../database/entities/idempotency-key.entity';
 
@@ -68,24 +68,29 @@ export class IdempotencyInterceptor implements NestInterceptor {
         }
 
         return next.handle().pipe(
-          tap(async (body) => {
-            if (req.idempotencyReplay) return;
-            const statusCode = res.statusCode || 201;
-            try {
-              await this.repo.save(
-                this.repo.create({
-                  key,
-                  userId,
-                  method,
-                  route,
-                  statusCode,
-                  responseBody: body ?? null,
-                }),
-              );
-            } catch {
-              // Unique race: another request stored first — ignore
-            }
-          }),
+          switchMap((body) =>
+            from(
+              (async () => {
+                if (req.idempotencyReplay) return body;
+                const statusCode = res.statusCode || 201;
+                try {
+                  await this.repo.save(
+                    this.repo.create({
+                      key,
+                      userId,
+                      method,
+                      route,
+                      statusCode,
+                      responseBody: body ?? null,
+                    }),
+                  );
+                } catch {
+                  // Unique race: another request stored first — ignore
+                }
+                return body;
+              })(),
+            ),
+          ),
         );
       }),
     );
