@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsBoolean,
   IsEmail,
   IsOptional,
@@ -21,6 +22,12 @@ export class CreateUserDto {
   @IsOptional()
   @IsUUID()
   roleId?: string;
+
+  /** Empty / omitted = all locations (backward compatible). */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  locationIds?: string[];
 }
 
 export class UpdateUserDto {
@@ -44,4 +51,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** Pass [] to clear assignments (all locations). */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  locationIds?: string[];
 }

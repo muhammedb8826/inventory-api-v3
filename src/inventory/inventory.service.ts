@@ -14,6 +14,7 @@ import * as XLSX from 'xlsx';
 import { DataSource, Not, QueryFailedError, Repository } from 'typeorm';
 import {
   ItemType,
+  LocationType,
   StockAdjustmentDirection,
   StockAdjustmentReason,
   StockMovementType,
@@ -647,6 +648,123 @@ export class InventoryService {
       where: { id: result.id },
       relations: { item: true, location: true, createdBy: true },
     });
+  }
+
+  listLots(filters: {
+    locationId?: string;
+    itemId?: string;
+    expiringBefore?: string;
+  }) {
+    return this.stockService.listLots(filters);
+  }
+
+  /** Move stock into a BIN (putaway) or out of a BIN (pick). */
+  async warehouseMove(
+    dto: {
+      fromLocationId: string;
+      toLocationId: string;
+      itemId: string;
+      quantity: number;
+      lotNumber?: string;
+      notes?: string;
+    },
+    mode: 'putaway' | 'pick',
+    userId?: string,
+  ) {
+    if (dto.fromLocationId === dto.toLocationId) {
+      throw new BadRequestException('from and to locations must differ');
+    }
+    const from = await this.locationRepo.findOne({
+      where: { id: dto.fromLocationId },
+    });
+    const to = await this.locationRepo.findOne({
+      where: { id: dto.toLocationId },
+    });
+    if (!from || !to) {
+      throw new BadRequestException('Location not found');
+    }
+
+    if (mode === 'putaway') {
+      if (to.type !== LocationType.BIN) {
+        throw new BadRequestException('Putaway destination must be a BIN');
+      }
+      if (to.parentId && to.parentId !== from.id) {
+        throw new BadRequestException(
+          'Putaway BIN must belong to the source warehouse/showroom',
+        );
+      }
+    } else {
+      if (from.type !== LocationType.BIN) {
+        throw new BadRequestException('Pick source must be a BIN');
+      }
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      // Transfer does not carry lot metadata on movements; adjust via
+      // reserve/ship when no lot, or explicit adjust pair when lot given.
+      if (dto.lotNumber?.trim()) {
+        const source = await this.stockService.getStock(
+          dto.fromLocationId,
+          dto.itemId,
+          manager,
+          { forUpdate: true },
+        );
+        const unitCost = source ? parseFloat(source.purchasePrice) : 0;
+        await this.stockService.adjust(
+          {
+            locationId: dto.fromLocationId,
+            itemId: dto.itemId,
+            quantityDelta: -dto.quantity,
+            lotNumber: dto.lotNumber,
+            movement: {
+              type: StockMovementType.TRANSFER_OUT,
+              refType: mode,
+              createdById: userId ?? null,
+              notes: dto.notes ?? null,
+            },
+          },
+          manager,
+        );
+        await this.stockService.adjust(
+          {
+            locationId: dto.toLocationId,
+            itemId: dto.itemId,
+            quantityDelta: dto.quantity,
+            purchasePrice: unitCost,
+            lotNumber: dto.lotNumber,
+            movement: {
+              type: StockMovementType.TRANSFER_IN,
+              refType: mode,
+              createdById: userId ?? null,
+              notes: dto.notes ?? null,
+            },
+          },
+          manager,
+        );
+      } else {
+        await this.stockService.transfer(
+          dto.fromLocationId,
+          dto.toLocationId,
+          dto.itemId,
+          dto.quantity,
+          manager,
+          {
+            refType: mode,
+            createdById: userId ?? null,
+            notes: dto.notes ?? null,
+          },
+        );
+      }
+    });
+
+    return {
+      mode,
+      fromLocationId: dto.fromLocationId,
+      toLocationId: dto.toLocationId,
+      itemId: dto.itemId,
+      quantity: dto.quantity,
+      lotNumber: dto.lotNumber ?? null,
+    };
   }
 
   async remove(id: string) {

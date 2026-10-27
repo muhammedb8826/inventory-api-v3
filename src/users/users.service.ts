@@ -13,6 +13,7 @@ import {
 } from '../common/utils/query.util';
 import { Role } from '../database/entities/role.entity';
 import { User } from '../database/entities/user.entity';
+import { LocationAccessService } from '../locations/location-access.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { UserListQueryDto } from './dto/user-list-query.dto';
 
@@ -23,6 +24,7 @@ export class UsersService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
+    private readonly locationAccess: LocationAccessService,
   ) {}
 
   findAll(query: UserListQueryDto) {
@@ -47,10 +49,11 @@ export class UsersService {
   async findOne(id: string) {
     const user = await this.userRepo.findOne({
       where: { id },
-      relations: { role: { permissions: true } },
+      relations: { role: { permissions: true }, userLocations: true },
     });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    const locationIds = (user.userLocations ?? []).map((ul) => ul.locationId);
+    return { ...user, locationIds };
   }
 
   /** Slim active-user list for assignee pickers (not full admin user admin). */
@@ -84,15 +87,15 @@ export class UsersService {
       passwordHash: await bcrypt.hash(dto.password, 10),
     });
     const saved = await this.userRepo.save(user);
+    if (dto.locationIds !== undefined) {
+      await this.locationAccess.setUserLocations(saved.id, dto.locationIds);
+    }
     return this.findOne(saved.id);
   }
 
   async update(id: string, dto: UpdateUserDto) {
-    // Ensure the user exists (and surfaces NotFound).
     await this.findOne(id);
 
-    // Prefer repository.update for scalar/FK fields. Loading the eager `role`
-    // relation and then save() can ignore roleId changes (TypeORM FK/relation conflict).
     const patch: Partial<User> = {};
     if (dto.email) patch.email = dto.email.toLowerCase();
     if (dto.fullName) patch.fullName = dto.fullName;
@@ -108,11 +111,18 @@ export class UsersService {
     if (Object.keys(patch).length > 0) {
       await this.userRepo.update(id, patch);
     }
+    if (dto.locationIds !== undefined) {
+      await this.locationAccess.setUserLocations(id, dto.locationIds);
+    }
     return this.findOne(id);
   }
 
   async remove(id: string) {
-    const user = await this.findOne(id);
+    const user = await this.userRepo.findOne({
+      where: { id },
+      relations: { role: { permissions: true } },
+    });
+    if (!user) throw new NotFoundException('User not found');
     user.isActive = false;
     await this.userRepo.save(user);
     return this.findOne(id);

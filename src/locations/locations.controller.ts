@@ -9,6 +9,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import {
+  CurrentUser,
+  type JwtPayload,
+} from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -23,14 +27,17 @@ export class LocationsController {
 
   @Get()
   @RequirePermissions('locations.read')
-  findAll(@Query() query: LocationListQueryDto) {
-    return this.locationsService.findAll(query);
+  findAll(
+    @Query() query: LocationListQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.locationsService.findAll(query, user.sub);
   }
 
   @Get(':id')
   @RequirePermissions('locations.read')
-  findOne(@Param('id') id: string) {
-    return this.locationsService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.locationsService.findOne(id, user.sub);
   }
 
   @Post()

@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Role } from './role.entity';
 import { RefreshToken } from './refresh-token.entity';
+import { UserLocation } from './user-location.entity';
 import { UuidBaseEntity } from './uuid-base.entity';
 
 @Entity('users')
@@ -34,6 +35,10 @@ export class User extends UuidBaseEntity {
 
   @OneToMany(() => RefreshToken, (token) => token.user)
   refreshTokens: RefreshToken[];
+
+  /** Empty = all locations (unless enforced elsewhere). Assigned = restricted. */
+  @OneToMany(() => UserLocation, (ul) => ul.user, { cascade: true })
+  userLocations: UserLocation[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

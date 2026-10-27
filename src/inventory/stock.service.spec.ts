@@ -3,6 +3,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { StockMovementType } from '../common/enums';
 import { Item } from '../database/entities/item.entity';
 import { StockLevel } from '../database/entities/stock-level.entity';
+import { StockLot } from '../database/entities/stock-lot.entity';
 import { StockMovement } from '../database/entities/stock-movement.entity';
 import { StockService } from './stock.service';
 
@@ -11,6 +12,7 @@ describe('StockService', () => {
   let stockRepo: jest.Mocked<Partial<Repository<StockLevel>>>;
   let itemRepo: jest.Mocked<Partial<Repository<Item>>>;
   let movementRepo: jest.Mocked<Partial<Repository<StockMovement>>>;
+  let lotRepo: jest.Mocked<Partial<Repository<StockLot>>>;
   let manager: EntityManager;
   let stockLevels: Map<string, StockLevel>;
   let movements: StockMovement[];
@@ -77,10 +79,24 @@ describe('StockService', () => {
       }),
     };
 
+    lotRepo = {
+      findOne: jest.fn(async () => null),
+      create: jest.fn((data: Partial<StockLot>) => ({ ...data }) as StockLot),
+      save: jest.fn(async (row: StockLot) => row),
+      createQueryBuilder: jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn(async () => []),
+      })),
+    };
+
     const getRepository = (entity: unknown) => {
       if (entity === StockLevel) return stockRepo;
       if (entity === Item) return itemRepo;
       if (entity === StockMovement) return movementRepo;
+      if (entity === StockLot) return lotRepo;
       throw new Error('unknown repo');
     };
 
@@ -117,6 +133,7 @@ describe('StockService', () => {
       stockRepo as Repository<StockLevel>,
       itemRepo as Repository<Item>,
       movementRepo as Repository<StockMovement>,
+      lotRepo as Repository<StockLot>,
       dataSource,
     );
   });

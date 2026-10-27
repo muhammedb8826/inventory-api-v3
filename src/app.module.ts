@@ -31,6 +31,7 @@ import { RolesModule } from './roles/roles.module';
 import { SalesModule } from './sales/sales.module';
 import { SettingsModule } from './settings/settings.module';
 import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
+import { StocktakesModule } from './stocktakes/stocktakes.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { UsersModule } from './users/users.module';
 
@@ -85,6 +86,7 @@ import { UsersModule } from './users/users.module';
     BomsModule,
     ProductionModule,
     StockTransfersModule,
+    StocktakesModule,
     SuppliersModule,
     CustomersModule,
     InquiriesModule,

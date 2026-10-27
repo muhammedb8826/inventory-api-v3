@@ -12,6 +12,21 @@ export const PERMISSION_DEFINITIONS = [
     name: 'Adjust inventory stock',
     module: 'inventory',
   },
+  {
+    code: 'stocktake.read',
+    name: 'View stocktakes',
+    module: 'stocktake',
+  },
+  {
+    code: 'stocktake.write',
+    name: 'Manage stocktakes',
+    module: 'stocktake',
+  },
+  {
+    code: 'locations.all',
+    name: 'Access all locations (bypass location assignment)',
+    module: 'locations',
+  },
   { code: 'bom.read', name: 'View bills of materials', module: 'bom' },
   { code: 'bom.write', name: 'Manage bills of materials', module: 'bom' },
   {
@@ -146,6 +161,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'inventory.write',
     'inventory.import',
     'inventory.adjust',
+    'stocktake.read',
+    'stocktake.write',
     'bom.read',
     'bom.write',
     'production.read',

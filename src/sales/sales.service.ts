@@ -515,18 +515,12 @@ export class SalesService {
           line.itemId,
           manager,
         );
-        await this.stockService.adjust(
-          {
-            locationId,
-            itemId: line.itemId,
-            quantityDelta: -line.quantity,
-            movement: {
-              type: StockMovementType.SALE,
-              refType: 'sale',
-              refId: sale.id,
-              createdById: userId ?? null,
-            },
-          },
+        await this.issueSaleLine(
+          locationId,
+          line,
+          sale.id,
+          userId,
+          allowNeg,
           manager,
         );
         stockChanges.push({
@@ -752,18 +746,12 @@ export class SalesService {
           line.itemId,
           manager,
         );
-        await this.stockService.adjust(
-          {
-            locationId: dto.locationId,
-            itemId: line.itemId,
-            quantityDelta: -line.quantity,
-            movement: {
-              type: StockMovementType.SALE,
-              refType: 'sale',
-              refId: sale.id,
-              createdById: userId ?? null,
-            },
-          },
+        await this.issueSaleLine(
+          dto.locationId,
+          line,
+          sale.id,
+          userId,
+          allowNegative,
           manager,
         );
         stockChanges.push({
@@ -828,6 +816,53 @@ export class SalesService {
       ...sale,
       stockWarnings: result.stockWarnings,
     };
+  }
+
+  /**
+   * Soft-reserve then consume (protects available qty vs concurrent holds).
+   * Negative-stock sales skip reserve and adjust directly.
+   */
+  private async issueSaleLine(
+    locationId: string,
+    line: SaleLineDto,
+    saleId: string,
+    userId: string | undefined,
+    allowNegative: boolean,
+    manager: EntityManager,
+  ) {
+    const meta = {
+      type: StockMovementType.SALE,
+      refType: 'sale',
+      refId: saleId,
+      createdById: userId ?? null,
+    };
+    if (allowNegative) {
+      await this.stockService.adjust(
+        {
+          locationId,
+          itemId: line.itemId,
+          quantityDelta: -line.quantity,
+          lotNumber: line.lotNumber,
+          movement: meta,
+        },
+        manager,
+      );
+      return;
+    }
+    await this.stockService.reserve(
+      locationId,
+      line.itemId,
+      line.quantity,
+      manager,
+    );
+    await this.stockService.consumeReserved(
+      locationId,
+      line.itemId,
+      line.quantity,
+      manager,
+      meta,
+      { lotNumber: line.lotNumber },
+    );
   }
 
   /**

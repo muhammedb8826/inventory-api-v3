@@ -1,4 +1,11 @@
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  ValidateIf,
+} from 'class-validator';
 import { LocationType } from '../../common/enums';
 
 export class CreateLocationDto {
@@ -11,6 +18,11 @@ export class CreateLocationDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  /** Required when type is BIN (parent warehouse/showroom). */
+  @ValidateIf((o: CreateLocationDto) => o.type === LocationType.BIN)
+  @IsUUID()
+  parentId?: string;
 }
 
 export class UpdateLocationDto {
@@ -29,4 +41,9 @@ export class UpdateLocationDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  parentId?: string | null;
 }

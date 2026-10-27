@@ -2,6 +2,8 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   UpdateDateColumn,
 } from 'typeorm';
@@ -22,6 +24,20 @@ export class Location extends UuidBaseEntity {
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
+
+  /** Parent warehouse/showroom when type is BIN (putaway target). */
+  @Column({ name: 'parent_id', type: 'uuid', nullable: true })
+  parentId: string | null;
+
+  @ManyToOne(() => Location, (loc) => loc.children, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'parent_id' })
+  parent: Location | null;
+
+  @OneToMany(() => Location, (loc) => loc.parent)
+  children: Location[];
 
   @OneToMany(() => StockLevel, (stock) => stock.location)
   stockLevels: StockLevel[];

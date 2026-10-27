@@ -35,6 +35,11 @@ export class SaleLineDto {
   @IsNumber()
   @Min(0)
   unitPrice: number;
+
+  /** Optional lot; when omitted issues use FEFO if lots exist. */
+  @IsOptional()
+  @IsString()
+  lotNumber?: string;
 }
 
 export class CreateSaleDto {

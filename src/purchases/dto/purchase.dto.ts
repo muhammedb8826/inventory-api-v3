@@ -33,6 +33,14 @@ export class PurchaseLineDto {
   @IsNumber()
   @Min(0)
   unitPrice: number;
+
+  @IsOptional()
+  @IsString()
+  lotNumber?: string;
+
+  @IsOptional()
+  @IsDateString()
+  expiryDate?: string;
 }
 
 export class CreatePurchaseDto {

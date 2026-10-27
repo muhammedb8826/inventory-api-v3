@@ -32,6 +32,10 @@ import {
   StockAdjustmentListQueryDto,
 } from './dto/stock-adjustment.dto';
 import { StockMovementListQueryDto } from './dto/stock-movement.dto';
+import {
+  LotListQueryDto,
+  WarehouseMoveDto,
+} from './dto/warehouse-move.dto';
 import type {
   UploadedExcelFile,
   UploadedImageFile,
@@ -114,6 +118,30 @@ export class InventoryController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.inventoryService.createAdjustment(dto, user.sub);
+  }
+
+  @Get('lots')
+  @RequirePermissions('inventory.read')
+  listLots(@Query() query: LotListQueryDto) {
+    return this.inventoryService.listLots(query);
+  }
+
+  @Post('putaway')
+  @RequirePermissions('inventory.write')
+  putaway(
+    @Body() dto: WarehouseMoveDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.inventoryService.warehouseMove(dto, 'putaway', user.sub);
+  }
+
+  @Post('pick')
+  @RequirePermissions('inventory.write')
+  pick(
+    @Body() dto: WarehouseMoveDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.inventoryService.warehouseMove(dto, 'pick', user.sub);
   }
 
   @Post('import')

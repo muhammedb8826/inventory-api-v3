@@ -33,6 +33,10 @@ export { SiteBranding } from './site-branding.entity';
 export { IdempotencyKey } from './idempotency-key.entity';
 export { SaleReturn } from './sale-return.entity';
 export { SaleReturnLine } from './sale-return-line.entity';
+export { Stocktake } from './stocktake.entity';
+export { StocktakeLine } from './stocktake-line.entity';
+export { StockLot } from './stock-lot.entity';
+export { UserLocation } from './user-location.entity';
 
 import { Permission } from './permission.entity';
 import { Role } from './role.entity';
@@ -69,6 +73,10 @@ import { SiteBranding } from './site-branding.entity';
 import { IdempotencyKey } from './idempotency-key.entity';
 import { SaleReturn } from './sale-return.entity';
 import { SaleReturnLine } from './sale-return-line.entity';
+import { Stocktake } from './stocktake.entity';
+import { StocktakeLine } from './stocktake-line.entity';
+import { StockLot } from './stock-lot.entity';
+import { UserLocation } from './user-location.entity';
 
 export const entities = [
   Permission,
@@ -106,4 +114,8 @@ export const entities = [
   IdempotencyKey,
   SaleReturn,
   SaleReturnLine,
+  Stocktake,
+  StocktakeLine,
+  StockLot,
+  UserLocation,
 ];

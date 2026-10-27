@@ -76,6 +76,12 @@ export class StockMovement extends UuidBaseEntity {
   @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
   createdById: string | null;
 
+  @Column({ name: 'lot_id', type: 'uuid', nullable: true })
+  lotId: string | null;
+
+  @Column({ name: 'lot_number', type: 'varchar', length: 80, nullable: true })
+  lotNumber: string | null;
+
   @ManyToOne(() => Location)
   @JoinColumn({ name: 'location_id' })
   location: Location;

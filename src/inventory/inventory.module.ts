@@ -4,6 +4,7 @@ import { Item } from '../database/entities/item.entity';
 import { Location } from '../database/entities/location.entity';
 import { StockAdjustment } from '../database/entities/stock-adjustment.entity';
 import { StockLevel } from '../database/entities/stock-level.entity';
+import { StockLot } from '../database/entities/stock-lot.entity';
 import { StockMovement } from '../database/entities/stock-movement.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { InventoryController } from './inventory.controller';
@@ -18,6 +19,7 @@ import { StockService } from './stock.service';
       Location,
       StockAdjustment,
       StockMovement,
+      StockLot,
     ]),
     NotificationsModule,
   ],
@@ -26,3 +28,4 @@ import { StockService } from './stock.service';
   exports: [StockService, InventoryService],
 })
 export class InventoryModule {}
+

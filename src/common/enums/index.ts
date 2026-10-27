@@ -1,6 +1,15 @@
 export enum LocationType {
   WAREHOUSE = 'WAREHOUSE',
   SHOWROOM = 'SHOWROOM',
+  /** Storage bin under a parent warehouse/showroom. */
+  BIN = 'BIN',
+}
+
+export enum StocktakeStatus {
+  DRAFT = 'DRAFT',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
 }
 
 export enum PaymentMethod {
@@ -104,6 +113,7 @@ export enum StockMovementType {
   PRODUCTION_REVERSE = 'PRODUCTION_REVERSE',
   OPENING = 'OPENING',
   IMPORT = 'IMPORT',
+  STOCKTAKE = 'STOCKTAKE',
 }
 
 /** Catalog classification for manufacturing / BOM. */

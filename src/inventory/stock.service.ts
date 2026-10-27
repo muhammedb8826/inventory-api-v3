@@ -9,6 +9,7 @@ import {
 import { StockMovementType } from '../common/enums';
 import { Item } from '../database/entities/item.entity';
 import { StockLevel } from '../database/entities/stock-level.entity';
+import { StockLot } from '../database/entities/stock-lot.entity';
 import { StockMovement } from '../database/entities/stock-movement.entity';
 
 export interface StockMovementMeta {
@@ -17,6 +18,8 @@ export interface StockMovementMeta {
   refId?: string | null;
   createdById?: string | null;
   notes?: string | null;
+  lotId?: string | null;
+  lotNumber?: string | null;
 }
 
 export interface StockAdjustment {
@@ -24,6 +27,9 @@ export interface StockAdjustment {
   itemId: string;
   quantityDelta: number;
   purchasePrice?: number;
+  /** Optional lot/batch for receipts & issues. */
+  lotNumber?: string;
+  expiryDate?: string | null;
   /** Ledger metadata — defaults to ADJUSTMENT when omitted. */
   movement?: StockMovementMeta;
 }
@@ -37,6 +43,8 @@ export class StockService {
     private readonly itemRepo: Repository<Item>,
     @InjectRepository(StockMovement)
     private readonly movementRepo: Repository<StockMovement>,
+    @InjectRepository(StockLot)
+    private readonly lotRepo: Repository<StockLot>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {}
@@ -48,6 +56,7 @@ export class StockService {
       movement: manager
         ? manager.getRepository(StockMovement)
         : this.movementRepo,
+      lot: manager ? manager.getRepository(StockLot) : this.lotRepo,
     };
   }
 
@@ -244,6 +253,8 @@ export class StockService {
     row.quantity = newQty.toFixed(3);
     const saved = await stock.save(row);
 
+    const lotMeta = await this.applyLotDelta(adj, manager);
+
     const meta = adj.movement ?? {
       type: StockMovementType.ADJUSTMENT,
     };
@@ -261,10 +272,172 @@ export class StockService {
         refId: meta.refId ?? null,
         notes: meta.notes ?? null,
         createdById: meta.createdById ?? null,
+        lotId: lotMeta.lotId ?? meta.lotId ?? null,
+        lotNumber: lotMeta.lotNumber ?? meta.lotNumber ?? null,
       }),
     );
 
     return saved;
+  }
+
+  /**
+   * Maintain stock_lots on receipt (+) / issue (−).
+   * Issues without lotNumber use FEFO across lots when lots exist.
+   */
+  private async applyLotDelta(
+    adj: StockAdjustment,
+    manager: EntityManager,
+  ): Promise<{ lotId: string | null; lotNumber: string | null }> {
+    const { lot } = this.repos(manager);
+    const qty = adj.quantityDelta;
+    if (qty === 0) return { lotId: null, lotNumber: null };
+
+    if (qty > 0) {
+      if (!adj.lotNumber?.trim()) {
+        return { lotId: null, lotNumber: null };
+      }
+      const lotNumber = adj.lotNumber.trim();
+      let row = await lot.findOne({
+        where: {
+          locationId: adj.locationId,
+          itemId: adj.itemId,
+          lotNumber,
+        },
+      });
+      if (!row) {
+        row = lot.create({
+          locationId: adj.locationId,
+          itemId: adj.itemId,
+          lotNumber,
+          expiryDate: adj.expiryDate ?? null,
+          quantity: '0',
+        });
+      }
+      row.quantity = (parseFloat(row.quantity) + qty).toFixed(3);
+      if (adj.expiryDate !== undefined) {
+        row.expiryDate = adj.expiryDate;
+      }
+      const saved = await lot.save(row);
+      return { lotId: saved.id, lotNumber: saved.lotNumber };
+    }
+
+    // Issue: explicit lot or FEFO across existing lots
+    const need = Math.abs(qty);
+    if (adj.lotNumber?.trim()) {
+      const lotNumber = adj.lotNumber.trim();
+      const row = await lot.findOne({
+        where: {
+          locationId: adj.locationId,
+          itemId: adj.itemId,
+          lotNumber,
+        },
+      });
+      if (!row || parseFloat(row.quantity) < need) {
+        throw new BadRequestException(
+          `Insufficient qty in lot ${lotNumber}. Available: ${row ? row.quantity : 0}, requested: ${need}`,
+        );
+      }
+      row.quantity = (parseFloat(row.quantity) - need).toFixed(3);
+      await lot.save(row);
+      return { lotId: row.id, lotNumber: row.lotNumber };
+    }
+
+    const lots = await lot
+      .createQueryBuilder('l')
+      .where('l.location_id = :locationId', { locationId: adj.locationId })
+      .andWhere('l.item_id = :itemId', { itemId: adj.itemId })
+      .andWhere('l.quantity::numeric > 0')
+      .orderBy('l.expiry_date', 'ASC', 'NULLS LAST')
+      .addOrderBy('l.created_at', 'ASC')
+      .getMany();
+
+    if (lots.length === 0) {
+      return { lotId: null, lotNumber: null };
+    }
+
+    let remaining = need;
+    let firstLotId: string | null = null;
+    let firstLotNumber: string | null = null;
+    for (const row of lots) {
+      if (remaining <= 0) break;
+      const available = parseFloat(row.quantity);
+      const take = Math.min(available, remaining);
+      row.quantity = (available - take).toFixed(3);
+      await lot.save(row);
+      if (!firstLotId) {
+        firstLotId = row.id;
+        firstLotNumber = row.lotNumber;
+      }
+      remaining -= take;
+    }
+    if (remaining > 1e-9) {
+      throw new BadRequestException(
+        `Insufficient lot qty for item. Short by ${remaining.toFixed(3)}`,
+      );
+    }
+    return { lotId: firstLotId, lotNumber: firstLotNumber };
+  }
+
+  async listLots(filters: {
+    locationId?: string;
+    itemId?: string;
+    expiringBefore?: string;
+  }) {
+    const qb = this.lotRepo
+      .createQueryBuilder('lot')
+      .leftJoinAndSelect('lot.item', 'item')
+      .leftJoinAndSelect('lot.location', 'location')
+      .where('lot.quantity::numeric > 0')
+      .orderBy('lot.expiry_date', 'ASC', 'NULLS LAST');
+    if (filters.locationId) {
+      qb.andWhere('lot.location_id = :locationId', {
+        locationId: filters.locationId,
+      });
+    }
+    if (filters.itemId) {
+      qb.andWhere('lot.item_id = :itemId', { itemId: filters.itemId });
+    }
+    if (filters.expiringBefore) {
+      qb.andWhere('lot.expiry_date IS NOT NULL')
+        .andWhere('lot.expiry_date <= :expiringBefore', {
+          expiringBefore: filters.expiringBefore,
+        });
+    }
+    return qb.getMany();
+  }
+
+  /**
+   * Soft-reserve fulfill: release hold then decrement on-hand (sale / issue).
+   * Call after `reserve` so concurrent ops cannot take the same available qty.
+   */
+  async consumeReserved(
+    locationId: string,
+    itemId: string,
+    quantity: number,
+    manager?: EntityManager,
+    meta?: StockMovementMeta,
+    lot?: { lotNumber?: string; expiryDate?: string | null },
+  ): Promise<StockLevel> {
+    if (!manager) {
+      return this.dataSource.transaction((tx) =>
+        this.consumeReserved(locationId, itemId, quantity, tx, meta, lot),
+      );
+    }
+    if (quantity <= 0) {
+      throw new BadRequestException('Quantity must be positive');
+    }
+    await this.releaseReservation(locationId, itemId, quantity, manager);
+    return this.adjust(
+      {
+        locationId,
+        itemId,
+        quantityDelta: -quantity,
+        lotNumber: lot?.lotNumber,
+        expiryDate: lot?.expiryDate,
+        movement: meta ?? { type: StockMovementType.SALE },
+      },
+      manager,
+    );
   }
 
   /**

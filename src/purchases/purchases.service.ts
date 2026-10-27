@@ -279,6 +279,8 @@ export class PurchasesService {
             itemId: line.itemId,
             quantityDelta: line.quantity,
             purchasePrice: line.unitPrice,
+            lotNumber: line.lotNumber,
+            expiryDate: line.expiryDate ?? null,
             movement: {
               type: StockMovementType.PURCHASE,
               refType: 'purchase',
@@ -447,6 +449,8 @@ export class PurchasesService {
             itemId: line.itemId,
             quantityDelta: line.quantity,
             purchasePrice: line.unitPrice,
+            lotNumber: line.lotNumber,
+            expiryDate: line.expiryDate ?? null,
             movement: {
               type: StockMovementType.PURCHASE,
               refType: 'purchase',
