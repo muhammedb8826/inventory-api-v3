@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  OnModuleInit,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
@@ -10,10 +6,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { SiteBranding } from '../database/entities/site-branding.entity';
-import {
-  BrandingResponse,
-  UpdateBrandingDto,
-} from './dto/branding.dto';
+import { BrandingResponse, UpdateBrandingDto } from './dto/branding.dto';
 
 const ALLOWED_MIME: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -125,9 +118,7 @@ export class SettingsService implements OnModuleInit {
     }
     const ext = ALLOWED_MIME[file.mimetype];
     if (!ext) {
-      throw new BadRequestException(
-        'Image must be JPEG, PNG, WebP, or GIF',
-      );
+      throw new BadRequestException('Image must be JPEG, PNG, WebP, or GIF');
     }
 
     if (!existsSync(this.uploadDir)) {

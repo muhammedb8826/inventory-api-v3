@@ -57,8 +57,9 @@ npm run seed
 npm run start:dev
 ```
 
-- API: `http://localhost:3001/api`
-- Health: `GET /api/health`
+- API: `http://localhost:3001/api/v1`
+- Health: `GET /api/v1/health` (readiness) · `GET /api/v1/health/live` (liveness)
+- OpenAPI: `http://localhost:3001/api/docs`
 - Default admin (after seed): `admin@stock.local` / `Admin@123`
 
 Set `DB_SEED=false` after the first successful seed.
@@ -427,36 +428,52 @@ docs/FRONTEND_API.md
 scripts/create-database.ts
 ```
 
+## API versioning
+
+- Current prefix: **`/api/v1`**
+- Breaking changes ship under a new prefix (`/api/v2`); v1 stays until clients migrate
+- Machine contract: OpenAPI at `/api/docs` · human guide: `docs/FRONTEND_API.md`
+- Frontend default: `NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1`
+
 ## Deploy to cPanel (FTP)
 
-GitHub Actions (`.github/workflows/deploy.yml`) builds on CI and uploads **`dist/`** and `package.json` — not TypeScript `src/`.
+**CI** (`.github/workflows/ci.yml`) runs lint → build → unit → migrate → e2e on every PR/push.
 
-**GitHub secrets**
+**Deploy** (`.github/workflows/vgate.yml`) runs **only after CI succeeds on `main`**, and uploads a **`dist/` + `package.json`** bundle (not app TypeScript sources).
+
+**GitHub secrets (VGATE)**
 
 | Secret | Example |
 |--------|---------|
-| `FTP_SERVER` | `ftp.yourdomain.com` |
-| `FTP_USERNAME` | cPanel FTP user |
-| `FTP_PASSWORD` | FTP password |
-| `CPANEL_DIR` | `inventory-api/` — path **relative to FTP home**, must end with `/` |
+| `FTP_SERVER_VGATE` | `ftp.yourdomain.com` |
+| `FTP_USERNAME_VGATE` | cPanel FTP user |
+| `FTP_PASSWORD_VGATE` | FTP password |
+| `CPANEL_DIR_VGATE` | `inventory-api/` — path **relative to FTP home**, must end with `/` |
 
 **Before first deploy**
 
-1. In cPanel **File Manager**, create the folder matching `CPANEL_DIR` (e.g. `inventory-api`).
+1. In cPanel **File Manager**, create the folder matching `CPANEL_DIR_VGATE`.
 2. In **Setup Node.js App**, set application root to that folder, startup file **`dist/main.js`**, Node 20.
-3. After deploy, run **Run NPM Install** then **Restart** in the Node app panel (or SSH: `npm ci --omit=dev` in that directory).
-4. Set environment variables in cPanel (DB_*, JWT_*, `PORT`, `CORS_ORIGIN`, `DB_SEED=false`).
+3. After FTP upload: **Run NPM Install** (`npm ci --omit=dev`), then **post-deploy migrate** (SSH or cPanel terminal):
 
-FTP error `553 Can't open that file` usually means `CPANEL_DIR` is wrong, the folder does not exist on the server, or the workflow was uploading `src/` (fixed — use compiled `dist/` only).
+```bash
+NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run
+```
+
+4. **Restart** the Node app. Set env: `NODE_ENV=production`, `DB_SYNCHRONIZE=false`, `DB_*`, `JWT_*`, `PORT`, `CORS_ORIGIN`, `DB_SEED=false`.
+
+FTP error `553 Can't open that file` usually means `CPANEL_DIR_VGATE` is wrong or the folder does not exist on the server.
 
 ## Production checklist
 
 - [ ] Strong JWT secrets
 - [ ] `NODE_ENV=production` and `DB_SYNCHRONIZE=false` (sync is **forced off** in production)
-- [ ] Run `npm run migration:run` before start (migrations are the schema source of truth — see `database/README.md`)
+- [ ] Run `npm run migration:run` **after every deploy** before/with restart (see `database/README.md`)
 - [ ] Set `DB_SEED=false` after initial seed
 - [ ] Configure `CORS_ORIGIN` for your frontend domain
+- [ ] Frontend points at `/api/v1`
 - [ ] Use HTTPS reverse proxy (nginx, etc.)
+- [ ] Probe liveness `GET /api/v1/health/live` and readiness `GET /api/v1/health`
 
 ## Migrations
 
@@ -479,8 +496,9 @@ npm test
 # Skip with E2E_SKIP=true when no DB is available
 npm run test:e2e
 
-# CI (`.github/workflows/ci.yml`) runs unit tests + migrations + e2e against Postgres 16
+# CI (`.github/workflows/ci.yml`): lint, build, unit, migrate, e2e (Postgres 16)
 ```
+
 
 ## Recent improvements
 

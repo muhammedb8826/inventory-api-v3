@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  quality:
     runs-on: ubuntu-latest
 
     services:
@@ -40,6 +40,7 @@ jobs:
       JWT_RT_EXPIRES_IN: 7d
       SEED_ADMIN_EMAIL: admin@stock.local
       SEED_ADMIN_PASSWORD: Admin@123
+      LOG_LEVEL: warn
 
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +52,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
 
       - name: Unit tests
         run: npx jest --runInBand

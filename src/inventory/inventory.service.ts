@@ -207,13 +207,9 @@ export class InventoryService {
   async create(dto: CreateInventoryDto, requestBaseUrl?: string) {
     await this.ensureLocation(dto.locationId);
     const sku =
-      dto.sku === undefined || dto.sku.trim() === ''
-        ? null
-        : dto.sku.trim();
+      dto.sku === undefined || dto.sku.trim() === '' ? null : dto.sku.trim();
 
-    let item = sku
-      ? await this.itemRepo.findOne({ where: { sku } })
-      : null;
+    let item = sku ? await this.itemRepo.findOne({ where: { sku } }) : null;
     if (!item) {
       try {
         item = await this.itemRepo.save(
@@ -260,11 +256,7 @@ export class InventoryService {
     return this.findOne(adjusted.id, requestBaseUrl);
   }
 
-  async update(
-    id: string,
-    dto: UpdateInventoryDto,
-    requestBaseUrl?: string,
-  ) {
+  async update(id: string, dto: UpdateInventoryDto, requestBaseUrl?: string) {
     const stock = await this.findOne(id, requestBaseUrl);
 
     const itemChanged =
@@ -338,9 +330,7 @@ export class InventoryService {
     }
     const ext = ITEM_IMAGE_MIME[file.mimetype];
     if (!ext) {
-      throw new BadRequestException(
-        'Image must be JPEG, PNG, WebP, or GIF',
-      );
+      throw new BadRequestException('Image must be JPEG, PNG, WebP, or GIF');
     }
 
     const stock = await this.findOne(stockId, requestBaseUrl);
@@ -584,35 +574,45 @@ export class InventoryService {
 
     const results: { row: number; status: string; id?: string }[] = [];
 
+    const cell = (value: unknown, fallback = ''): string => {
+      if (value == null) return fallback;
+      if (
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+      ) {
+        return String(value);
+      }
+      return fallback;
+    };
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const excelRow = i + 2;
-      const description = String(
-        row.description ?? row.Description ?? row.item ?? '',
+      const description = cell(
+        row.description ?? row.Description ?? row.item,
       ).trim();
       const quantity = parseFloat(
-        String(row.quantity ?? row.Quantity ?? row.qty ?? 0),
+        cell(row.quantity ?? row.Quantity ?? row.qty, '0'),
       );
       const purchasePrice = parseFloat(
-        String(
+        cell(
           row.purchasePrice ??
             row.purchase_price ??
             row.price ??
-            row.PurchasePrice ??
-            0,
+            row.PurchasePrice,
+          '0',
         ),
       );
       const reorderPointRaw = row.reorderPoint ?? row.reorder_point;
       const reorderPoint =
         reorderPointRaw !== undefined && reorderPointRaw !== ''
-          ? parseFloat(String(reorderPointRaw))
+          ? parseFloat(cell(reorderPointRaw))
           : undefined;
-      const imageUrlRaw = String(
-        row.imageUrl ?? row.image_url ?? row.ImageUrl ?? '',
+      const imageUrlRaw = cell(
+        row.imageUrl ?? row.image_url ?? row.ImageUrl,
       ).trim();
-      const itemTypeRaw = String(
-        row.itemType ?? row.item_type ?? row.ItemType ?? '',
-      )
+      const itemTypeRaw = cell(row.itemType ?? row.item_type ?? row.ItemType)
         .trim()
         .toUpperCase();
       const itemType = Object.values(ItemType).includes(itemTypeRaw as ItemType)
@@ -625,12 +625,13 @@ export class InventoryService {
       }
 
       try {
+        const skuCell = cell(row.sku).trim();
         const saved = await this.create({
           description,
           locationId,
           quantity,
           purchasePrice: Number.isNaN(purchasePrice) ? 0 : purchasePrice,
-          sku: row.sku ? String(row.sku) : undefined,
+          sku: skuCell || undefined,
           itemType,
           reorderPoint:
             reorderPoint !== undefined && !Number.isNaN(reorderPoint)
@@ -848,7 +849,10 @@ function isBlockedImageHost(hostname: string): boolean {
   }
 
   const parts = host.split('.').map((p) => Number(p));
-  if (parts.length === 4 && parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+  if (
+    parts.length === 4 &&
+    parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)
+  ) {
     const [a, b] = parts;
     if (a === 10) return true;
     if (a === 127) return true;
@@ -879,9 +883,7 @@ async function resolveFirstWorksheetPath(
       : undefined;
   }
 
-  const firstSheet = workbookXml.match(
-    /<sheet[^>]*\br:id="([^"]+)"[^>]*\/?>/,
-  );
+  const firstSheet = workbookXml.match(/<sheet[^>]*\br:id="([^"]+)"[^>]*\/?>/);
   if (!firstSheet) {
     return zip.file('xl/worksheets/sheet1.xml')
       ? 'xl/worksheets/sheet1.xml'

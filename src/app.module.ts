@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { randomUUID } from 'crypto';
+import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
 import { BanksModule } from './banks/banks.module';
 import { BomsModule } from './boms/boms.module';
@@ -12,6 +16,7 @@ import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DatabaseModule } from './database/database.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { InquiriesModule } from './inquiries/inquiries.module';
 import { LocationsModule } from './locations/locations.module';
@@ -28,7 +33,6 @@ import { SettingsModule } from './settings/settings.module';
 import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { UsersModule } from './users/users.module';
-import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -36,8 +40,40 @@ import { HealthController } from './health.controller';
       isGlobal: true,
       load: [appConfig, databaseConfig, jwtConfig],
     }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.LOG_LEVEL ?? 'info',
+        genReqId: (req, res) => {
+          const existing = req.headers['x-request-id'];
+          const id =
+            typeof existing === 'string' && existing.length > 0
+              ? existing
+              : randomUUID();
+          res.setHeader('x-request-id', id);
+          return id;
+        },
+        customProps: (req) => ({
+          requestId: req.id,
+        }),
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? {
+                target: 'pino-pretty',
+                options: { singleLine: true, colorize: true },
+              }
+            : undefined,
+      },
+    }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 120,
+      },
+    ]),
     CommonModule,
     DatabaseModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     RolesModule,
@@ -62,6 +98,11 @@ import { HealthController } from './health.controller';
     ReportsModule,
     SettingsModule,
   ],
-  controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

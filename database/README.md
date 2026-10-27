@@ -22,9 +22,11 @@ DB_SEED=true npm run seed
 
 - [ ] `NODE_ENV=production`
 - [ ] `DB_SYNCHRONIZE=false` (ignored in production even if set to `true`)
-- [ ] Run `npm run migration:run` on deploy / before start
+- [ ] Run `npm run migration:run` on **every** deploy / before start
 - [ ] Set `DB_SEED=false` after the first seed
 - [ ] Never use TypeORM `synchronize` against production data
+- [ ] API clients use `/api/v1` (OpenAPI at `/api/docs`)
+- [ ] After `HashRefreshTokens` migration, users must log in again (refresh rows cleared)
 
 ## Why not synchronize?
 

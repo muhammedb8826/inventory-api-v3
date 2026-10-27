@@ -8,7 +8,6 @@ export default registerAs('database', () => {
   const isProd = process.env.NODE_ENV === 'production';
   const syncRequested = process.env.DB_SYNCHRONIZE === 'true';
   if (isProd && syncRequested) {
-    // eslint-disable-next-line no-console
     console.warn(
       '[database] DB_SYNCHRONIZE=true ignored in production; use migrations only.',
     );

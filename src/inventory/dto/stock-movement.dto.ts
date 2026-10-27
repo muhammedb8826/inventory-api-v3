@@ -1,4 +1,10 @@
-import { IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MinLength,
+} from 'class-validator';
 import { StockMovementType } from '../../common/enums';
 import { DateRangeQueryDto } from '../../common/dto/date-range.dto';
 

@@ -13,8 +13,9 @@ export class RefreshToken extends UuidBaseEntity {
   @Column({ name: 'user_id' })
   userId: string;
 
-  @Column({ length: 500 })
-  token: string;
+  /** SHA-256 hex of the refresh JWT — never store the raw token. */
+  @Column({ name: 'token_hash', length: 64 })
+  tokenHash: string;
 
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;

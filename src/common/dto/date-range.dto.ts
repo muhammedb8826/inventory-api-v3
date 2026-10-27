@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import { IsDateString, IsOptional } from 'class-validator';
 import { PaginationQueryDto } from './pagination.dto';
 

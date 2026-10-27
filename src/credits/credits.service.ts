@@ -10,7 +10,11 @@ import {
   Repository,
   SelectQueryBuilder,
 } from 'typeorm';
-import { BankTransactionType, CreditSource, CreditStatus } from '../common/enums';
+import {
+  BankTransactionType,
+  CreditSource,
+  CreditStatus,
+} from '../common/enums';
 import {
   applyDateRangeToQb,
   applyRelatedIlikeSearch,

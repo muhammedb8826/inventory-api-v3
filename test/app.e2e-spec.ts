@@ -1,12 +1,15 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
-import { GlobalExceptionFilter } from '../src/common/filters/http-exception.filter';
-import { SeedService } from '../src/database/seed.service';
 import { LocationType, PaymentMethod } from '../src/common/enums';
+import { SeedService } from '../src/database/seed.service';
+import { setupApp } from '../src/setup-app';
+
+const API = '/api/v1';
 
 /**
  * Smoke e2e against a real Postgres database.
@@ -35,16 +38,10 @@ describe('Inventory API smoke (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
-    app.useGlobalFilters(new GlobalExceptionFilter());
+    app = moduleFixture.createNestApplication<NestExpressApplication>({
+      bufferLogs: true,
+    });
+    setupApp(app as NestExpressApplication);
     await app.init();
 
     dataSource = app.get(DataSource);
@@ -59,163 +56,174 @@ describe('Inventory API smoke (e2e)', () => {
 
   const itDb = skip ? it.skip : it;
 
-  itDb('GET /api/health', async () => {
-    const res = await request(app.getHttpServer()).get('/api/health').expect(200);
+  itDb('GET /api/v1/health/live (liveness)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`${API}/health/live`)
+      .expect(200);
+    expect(res.body.status).toBe('ok');
+  });
+
+  itDb('GET /api/v1/health (readiness + DB)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`${API}/health`)
+      .expect(200);
     expect(res.body.status).toBe('ok');
   });
 
   itDb('rejects unauthenticated inventory list with 401', async () => {
-    await request(app.getHttpServer()).get('/api/inventory').expect(401);
+    await request(app.getHttpServer()).get(`${API}/inventory`).expect(401);
   });
 
-  itDb('login → create stock → sale → qty drops; bad auth stays 401', async () => {
-    const login = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email: adminEmail, password: adminPassword });
-    expect([200, 201]).toContain(login.status);
-    expect(login.body.accessToken).toBeTruthy();
+  itDb(
+    'login → create stock → sale → qty drops; bad auth stays 401',
+    async () => {
+      const login = await request(app.getHttpServer())
+        .post(`${API}/auth/login`)
+        .send({ email: adminEmail, password: adminPassword });
+      expect([200, 201]).toContain(login.status);
+      expect(login.body.accessToken).toBeTruthy();
 
-    const token = login.body.accessToken as string;
-    const auth = { Authorization: `Bearer ${token}` };
+      const token = login.body.accessToken as string;
+      const auth = { Authorization: `Bearer ${token}` };
 
-    const locations = await request(app.getHttpServer())
-      .get('/api/locations')
-      .set(auth)
-      .expect(200);
+      const locations = await request(app.getHttpServer())
+        .get(`${API}/locations`)
+        .set(auth)
+        .expect(200);
 
-    const list = Array.isArray(locations.body)
-      ? locations.body
-      : (locations.body.data ?? []);
-    let locationId = list[0]?.id as string | undefined;
+      const list = Array.isArray(locations.body)
+        ? locations.body
+        : (locations.body.data ?? []);
+      let locationId = list[0]?.id as string | undefined;
 
-    if (!locationId) {
-      const createdLoc = await request(app.getHttpServer())
-        .post('/api/locations')
+      if (!locationId) {
+        const createdLoc = await request(app.getHttpServer())
+          .post(`${API}/locations`)
+          .set(auth)
+          .send({
+            name: `E2E Warehouse ${Date.now()}`,
+            type: LocationType.WAREHOUSE,
+          })
+          .expect(201);
+        locationId = createdLoc.body.id;
+      }
+
+      const banks = await request(app.getHttpServer())
+        .get(`${API}/banks/accounts`)
+        .set(auth)
+        .expect(200);
+      const bankList = Array.isArray(banks.body)
+        ? banks.body
+        : (banks.body.data ?? []);
+      const cashAccount =
+        bankList.find(
+          (b: { accountType?: string; name?: string }) =>
+            b.accountType === 'CASH' || b.name === 'Cash',
+        ) ?? bankList[0];
+      expect(cashAccount?.id).toBeTruthy();
+
+      const sku = `E2E-${Date.now()}`;
+      const openingQty = 10;
+      const saleQty = 3;
+
+      const stockRes = await request(app.getHttpServer())
+        .post(`${API}/inventory`)
         .set(auth)
         .send({
-          name: `E2E Warehouse ${Date.now()}`,
-          type: LocationType.WAREHOUSE,
+          description: 'E2E Widget',
+          sku,
+          locationId,
+          quantity: openingQty,
+          purchasePrice: 25,
+        });
+      expect([200, 201]).toContain(stockRes.status);
+
+      const itemId = stockRes.body.itemId ?? stockRes.body.item?.id;
+      expect(itemId).toBeTruthy();
+      expect(parseFloat(stockRes.body.quantity)).toBe(openingQty);
+
+      const saleRes = await request(app.getHttpServer())
+        .post(`${API}/sales`)
+        .set(auth)
+        .send({
+          locationId,
+          paymentMethod: PaymentMethod.CASH,
+          bankAccountId: cashAccount.id,
+          lines: [{ itemId, quantity: saleQty, unitPrice: 40 }],
+        });
+      expect([200, 201]).toContain(saleRes.status);
+      expect(saleRes.body.id).toBeTruthy();
+
+      const after = await request(app.getHttpServer())
+        .get(`${API}/inventory/${stockRes.body.id}`)
+        .set(auth)
+        .expect(200);
+
+      expect(parseFloat(after.body.quantity)).toBe(openingQty - saleQty);
+
+      const movements = await request(app.getHttpServer())
+        .get(`${API}/inventory/movements`)
+        .query({ search: sku, limit: 20 })
+        .set(auth)
+        .expect(200);
+
+      const movementRows = Array.isArray(movements.body)
+        ? movements.body
+        : (movements.body.data ?? []);
+      const types = movementRows.map((m: { type: string }) => m.type);
+      expect(types).toEqual(expect.arrayContaining(['OPENING', 'SALE']));
+
+      await request(app.getHttpServer())
+        .post(`${API}/auth/login`)
+        .send({ email: adminEmail, password: 'wrong-password' })
+        .expect(401);
+
+      const roles = await request(app.getHttpServer())
+        .get(`${API}/roles`)
+        .set(auth)
+        .expect(200);
+      const roleList = Array.isArray(roles.body)
+        ? roles.body
+        : (roles.body.data ?? []);
+      const salesRole = roleList.find(
+        (r: { name?: string }) => r.name === 'Sales Representative',
+      );
+      expect(salesRole?.id).toBeTruthy();
+
+      const limitedEmail = `e2e-sales-${Date.now()}@stock.local`;
+      const limitedPassword = 'E2eSales@123';
+      const createdUser = await request(app.getHttpServer())
+        .post(`${API}/users`)
+        .set(auth)
+        .send({
+          email: limitedEmail,
+          password: limitedPassword,
+          fullName: 'E2E Sales Rep',
+          roleId: salesRole.id,
+        });
+      expect([200, 201]).toContain(createdUser.status);
+
+      const limitedLogin = await request(app.getHttpServer())
+        .post(`${API}/auth/login`)
+        .send({ email: limitedEmail, password: limitedPassword });
+      expect([200, 201]).toContain(limitedLogin.status);
+      const limitedAuth = {
+        Authorization: `Bearer ${limitedLogin.body.accessToken}`,
+      };
+
+      await request(app.getHttpServer())
+        .post(`${API}/inventory`)
+        .set(limitedAuth)
+        .send({
+          description: 'Forbidden Widget',
+          sku: `E2E-403-${Date.now()}`,
+          locationId,
+          quantity: 1,
+          purchasePrice: 1,
         })
-        .expect(201);
-      locationId = createdLoc.body.id;
-    }
+        .expect(403);
 
-    const banks = await request(app.getHttpServer())
-      .get('/api/banks/accounts')
-      .set(auth)
-      .expect(200);
-    const bankList = Array.isArray(banks.body)
-      ? banks.body
-      : (banks.body.data ?? []);
-    const cashAccount =
-      bankList.find(
-        (b: { accountType?: string; name?: string }) =>
-          b.accountType === 'CASH' || b.name === 'Cash',
-      ) ?? bankList[0];
-    expect(cashAccount?.id).toBeTruthy();
-
-    const sku = `E2E-${Date.now()}`;
-    const openingQty = 10;
-    const saleQty = 3;
-
-    const stockRes = await request(app.getHttpServer())
-      .post('/api/inventory')
-      .set(auth)
-      .send({
-        description: 'E2E Widget',
-        sku,
-        locationId,
-        quantity: openingQty,
-        purchasePrice: 25,
-      });
-    expect([200, 201]).toContain(stockRes.status);
-
-    const itemId = stockRes.body.itemId ?? stockRes.body.item?.id;
-    expect(itemId).toBeTruthy();
-    expect(parseFloat(stockRes.body.quantity)).toBe(openingQty);
-
-    const saleRes = await request(app.getHttpServer())
-      .post('/api/sales')
-      .set(auth)
-      .send({
-        locationId,
-        paymentMethod: PaymentMethod.CASH,
-        bankAccountId: cashAccount.id,
-        lines: [{ itemId, quantity: saleQty, unitPrice: 40 }],
-      });
-    expect([200, 201]).toContain(saleRes.status);
-    expect(saleRes.body.id).toBeTruthy();
-
-    const after = await request(app.getHttpServer())
-      .get(`/api/inventory/${stockRes.body.id}`)
-      .set(auth)
-      .expect(200);
-
-    expect(parseFloat(after.body.quantity)).toBe(openingQty - saleQty);
-
-    const movements = await request(app.getHttpServer())
-      .get('/api/inventory/movements')
-      .query({ search: sku, limit: 20 })
-      .set(auth)
-      .expect(200);
-
-    const movementRows = Array.isArray(movements.body)
-      ? movements.body
-      : (movements.body.data ?? []);
-    const types = movementRows.map((m: { type: string }) => m.type);
-    expect(types).toEqual(expect.arrayContaining(['OPENING', 'SALE']));
-
-    await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email: adminEmail, password: 'wrong-password' })
-      .expect(401);
-
-    const roles = await request(app.getHttpServer())
-      .get('/api/roles')
-      .set(auth)
-      .expect(200);
-    const roleList = Array.isArray(roles.body)
-      ? roles.body
-      : (roles.body.data ?? []);
-    const salesRole = roleList.find(
-      (r: { name?: string }) => r.name === 'Sales Representative',
-    );
-    expect(salesRole?.id).toBeTruthy();
-
-    const limitedEmail = `e2e-sales-${Date.now()}@stock.local`;
-    const limitedPassword = 'E2eSales@123';
-    const createdUser = await request(app.getHttpServer())
-      .post('/api/users')
-      .set(auth)
-      .send({
-        email: limitedEmail,
-        password: limitedPassword,
-        fullName: 'E2E Sales Rep',
-        roleId: salesRole.id,
-      });
-    expect([200, 201]).toContain(createdUser.status);
-
-    const limitedLogin = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email: limitedEmail, password: limitedPassword });
-    expect([200, 201]).toContain(limitedLogin.status);
-    const limitedAuth = {
-      Authorization: `Bearer ${limitedLogin.body.accessToken}`,
-    };
-
-    // Authenticated but missing inventory.write → 403
-    await request(app.getHttpServer())
-      .post('/api/inventory')
-      .set(limitedAuth)
-      .send({
-        description: 'Forbidden Widget',
-        sku: `E2E-403-${Date.now()}`,
-        locationId,
-        quantity: 1,
-        purchasePrice: 1,
-      })
-      .expect(403);
-
-    expect(dataSource.isInitialized).toBe(true);
-  });
+      expect(dataSource.isInitialized).toBe(true);
+    },
+  );
 });

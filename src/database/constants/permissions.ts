@@ -85,7 +85,11 @@ export const PERMISSION_DEFINITIONS = [
     name: 'Manage customer inquiries',
     module: 'inquiries',
   },
-  { code: 'settings.read', name: 'View site settings / branding', module: 'settings' },
+  {
+    code: 'settings.read',
+    name: 'View site settings / branding',
+    module: 'settings',
+  },
   {
     code: 'settings.write',
     name: 'Manage site settings / branding',

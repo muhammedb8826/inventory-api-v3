@@ -3,7 +3,8 @@
 This document is the **canonical REST contract** for the NestJS backend (`inventory-api`). The Next.js frontend consumes these endpoints via `NEXT_PUBLIC_API_URL`.
 
 **Frontend guide (overview):** [README.md](./README.md)  
-**Base URL:** `http://localhost:3001/api` (backend `PORT`; frontend override: `NEXT_PUBLIC_API_URL` in `.env.local`)
+**Base URL:** `http://localhost:3001/api/v1` (backend `PORT`; frontend override: `NEXT_PUBLIC_API_URL` in `.env.local`)  
+**OpenAPI:** `http://localhost:3001/api/docs`
 
 ### Currency
 
@@ -1514,7 +1515,7 @@ NestJS default:
 
 ## Health
 
-`GET /api/health` — no auth.
+`GET /api/v1/health` — readiness (DB ping) · `GET /api/v1/health/live` — liveness · no auth.
 
 ```json
 {
@@ -1534,7 +1535,7 @@ NestJS default:
 2. Run `npm run migration:run` (migrations are the schema source of truth — see `database/README.md`). `DB_SYNCHRONIZE=true` is **dev-only** and ignored when `NODE_ENV=production`.
 3. Set `.env` (`DB_PASSWORD` must be a string; empty breaks pg SASL auth).
 4. `DB_SEED=true` on first run → roles, permissions, admin, default warehouse, **Main Bank** + **Cash** accounts.
-5. `npm run start:dev` → `http://localhost:3001/api`
+5. `npm run start:dev` → `http://localhost:3001/api/v1` (docs: `/api/docs`)
 
 Default admin: `admin@stock.local` / `Admin@123` (override with `SEED_ADMIN_*`).
 
@@ -1544,7 +1545,7 @@ Default admin: `admin@stock.local` / `Admin@123` (override with `SEED_ADMIN_*`).
 
 ```bash
 cp .env.example .env.local
-# NEXT_PUBLIC_API_URL=http://localhost:3001/api
+# NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
 npm install && npm run dev
 ```
 

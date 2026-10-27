@@ -15,8 +15,7 @@ describe('StockService', () => {
   let stockLevels: Map<string, StockLevel>;
   let movements: StockMovement[];
 
-  const key = (locationId: string, itemId: string) =>
-    `${locationId}:${itemId}`;
+  const key = (locationId: string, itemId: string) => `${locationId}:${itemId}`;
 
   beforeEach(() => {
     stockLevels = new Map();
@@ -30,10 +29,18 @@ describe('StockService', () => {
     };
 
     stockRepo = {
-      findOne: jest.fn(async ({ where }: { where: { locationId: string; itemId: string } }) => {
-        return stockLevels.get(key(where.locationId, where.itemId)) ?? null;
-      }),
-      create: jest.fn((data: Partial<StockLevel>) => ({ ...data }) as StockLevel),
+      findOne: jest.fn(
+        async ({
+          where,
+        }: {
+          where: { locationId: string; itemId: string };
+        }) => {
+          return stockLevels.get(key(where.locationId, where.itemId)) ?? null;
+        },
+      ),
+      create: jest.fn(
+        (data: Partial<StockLevel>) => ({ ...data }) as StockLevel,
+      ),
       save: jest.fn(async (row: StockLevel) => {
         if (!row.id) row.id = `stock-${stockLevels.size + 1}`;
         stockLevels.set(key(row.locationId, row.itemId), row);
@@ -60,7 +67,9 @@ describe('StockService', () => {
     };
 
     movementRepo = {
-      create: jest.fn((data: Partial<StockMovement>) => ({ ...data }) as StockMovement),
+      create: jest.fn(
+        (data: Partial<StockMovement>) => ({ ...data }) as StockMovement,
+      ),
       save: jest.fn(async (row: StockMovement) => {
         if (!row.id) row.id = `mv-${movements.length + 1}`;
         movements.push(row);
@@ -113,16 +122,13 @@ describe('StockService', () => {
   });
 
   it('computes weighted average cost on inbound and writes a ledger row', async () => {
-    stockLevels.set(
-      key('loc-1', 'item-1'),
-      {
-        id: 's1',
-        locationId: 'loc-1',
-        itemId: 'item-1',
-        quantity: '10.000',
-        purchasePrice: '10.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('loc-1', 'item-1'), {
+      id: 's1',
+      locationId: 'loc-1',
+      itemId: 'item-1',
+      quantity: '10.000',
+      purchasePrice: '10.00',
+    } as StockLevel);
 
     const row = await service.adjust(
       {
@@ -184,16 +190,13 @@ describe('StockService', () => {
   });
 
   it('transfer writes TRANSFER_OUT and TRANSFER_IN movements', async () => {
-    stockLevels.set(
-      key('from', 'item-1'),
-      {
-        id: 's-from',
-        locationId: 'from',
-        itemId: 'item-1',
-        quantity: '8.000',
-        purchasePrice: '4.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('from', 'item-1'), {
+      id: 's-from',
+      locationId: 'from',
+      itemId: 'item-1',
+      quantity: '8.000',
+      purchasePrice: '4.00',
+    } as StockLevel);
 
     await service.transfer('from', 'to', 'item-1', 3, manager, {
       refType: 'stock_transfer',
@@ -209,16 +212,13 @@ describe('StockService', () => {
   });
 
   it('checkAvailability throws when stock is insufficient', async () => {
-    stockLevels.set(
-      key('loc-1', 'item-1'),
-      {
-        id: 's1',
-        locationId: 'loc-1',
-        itemId: 'item-1',
-        quantity: '1.000',
-        purchasePrice: '1.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('loc-1', 'item-1'), {
+      id: 's1',
+      locationId: 'loc-1',
+      itemId: 'item-1',
+      quantity: '1.000',
+      purchasePrice: '1.00',
+    } as StockLevel);
 
     await expect(
       service.checkAvailability(
@@ -231,16 +231,13 @@ describe('StockService', () => {
   });
 
   it('checkAvailability warns but allows when negative stock is permitted', async () => {
-    stockLevels.set(
-      key('loc-1', 'item-1'),
-      {
-        id: 's1',
-        locationId: 'loc-1',
-        itemId: 'item-1',
-        quantity: '1.000',
-        purchasePrice: '1.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('loc-1', 'item-1'), {
+      id: 's1',
+      locationId: 'loc-1',
+      itemId: 'item-1',
+      quantity: '1.000',
+      purchasePrice: '1.00',
+    } as StockLevel);
 
     const warnings = await service.checkAvailability(
       'loc-1',
@@ -253,23 +250,24 @@ describe('StockService', () => {
   });
 
   it('allows balance to go negative via adjust (caller enforces policy)', async () => {
-    stockLevels.set(
-      key('loc-1', 'item-1'),
-      {
-        id: 's1',
-        locationId: 'loc-1',
-        itemId: 'item-1',
-        quantity: '2.000',
-        purchasePrice: '5.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('loc-1', 'item-1'), {
+      id: 's1',
+      locationId: 'loc-1',
+      itemId: 'item-1',
+      quantity: '2.000',
+      purchasePrice: '5.00',
+    } as StockLevel);
 
     const row = await service.adjust(
       {
         locationId: 'loc-1',
         itemId: 'item-1',
         quantityDelta: -5,
-        movement: { type: StockMovementType.SALE, refType: 'sale', refId: 's1' },
+        movement: {
+          type: StockMovementType.SALE,
+          refType: 'sale',
+          refId: 's1',
+        },
       },
       manager,
     );
@@ -284,23 +282,24 @@ describe('StockService', () => {
   });
 
   it('sale void style reverse restores qty with SALE_VOID ledger', async () => {
-    stockLevels.set(
-      key('loc-1', 'item-1'),
-      {
-        id: 's1',
-        locationId: 'loc-1',
-        itemId: 'item-1',
-        quantity: '7.000',
-        purchasePrice: '3.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('loc-1', 'item-1'), {
+      id: 's1',
+      locationId: 'loc-1',
+      itemId: 'item-1',
+      quantity: '7.000',
+      purchasePrice: '3.00',
+    } as StockLevel);
 
     await service.adjust(
       {
         locationId: 'loc-1',
         itemId: 'item-1',
         quantityDelta: -2,
-        movement: { type: StockMovementType.SALE, refType: 'sale', refId: 'sale-1' },
+        movement: {
+          type: StockMovementType.SALE,
+          refType: 'sale',
+          refId: 'sale-1',
+        },
       },
       manager,
     );
@@ -329,16 +328,13 @@ describe('StockService', () => {
   });
 
   it('transfer rejects insufficient source stock', async () => {
-    stockLevels.set(
-      key('from', 'item-1'),
-      {
-        id: 's-from',
-        locationId: 'from',
-        itemId: 'item-1',
-        quantity: '1.000',
-        purchasePrice: '4.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('from', 'item-1'), {
+      id: 's-from',
+      locationId: 'from',
+      itemId: 'item-1',
+      quantity: '1.000',
+      purchasePrice: '4.00',
+    } as StockLevel);
 
     await expect(
       service.transfer('from', 'to', 'item-1', 3, manager),
@@ -366,16 +362,13 @@ describe('StockService', () => {
       return lockedQb;
     });
 
-    stockLevels.set(
-      key('loc-1', 'item-1'),
-      {
-        id: 's1',
-        locationId: 'loc-1',
-        itemId: 'item-1',
-        quantity: '1.000',
-        purchasePrice: '1.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('loc-1', 'item-1'), {
+      id: 's1',
+      locationId: 'loc-1',
+      itemId: 'item-1',
+      quantity: '1.000',
+      purchasePrice: '1.00',
+    } as StockLevel);
 
     await service.getStock('loc-1', 'item-1', manager, { forUpdate: true });
     expect(setLock).toHaveBeenCalledWith('pessimistic_write');

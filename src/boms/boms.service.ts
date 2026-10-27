@@ -108,7 +108,7 @@ export class BomsService {
     await this.bomRepo.save(header);
 
     if (dto.lines) {
-      await this.assertLines(bom.finishedItemId, dto.lines as BomLineDto[]);
+      await this.assertLines(bom.finishedItemId, dto.lines);
       const lineRepo = this.bomRepo.manager.getRepository(BomLine);
       await lineRepo.delete({ bomId: id });
       await lineRepo.save(

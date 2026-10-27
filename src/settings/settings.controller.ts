@@ -11,11 +11,11 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 import type { Request } from 'express';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { imageUploadOptions } from '../common/upload/multer-options';
 import { UpdateBrandingDto } from './dto/branding.dto';
 import { SettingsService } from './settings.service';
 
@@ -44,16 +44,8 @@ export class SettingsController {
 
   @Post('branding/hero-image')
   @RequirePermissions('settings.write')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
-    }),
-  )
-  uploadHero(
-    @Req() req: Request,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
+  @UseInterceptors(FileInterceptor('file', imageUploadOptions))
+  uploadHero(@Req() req: Request, @UploadedFile() file: Express.Multer.File) {
     return this.settings.uploadHeroImage(file, requestBaseUrl(req));
   }
 

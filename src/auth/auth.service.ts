@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
+import { hashToken } from '../common/utils/token-hash.util';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
 import { User } from '../database/entities/user.entity';
 import { LoginDto } from './dto/auth.dto';
@@ -44,19 +45,20 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string) {
-    const stored = await this.refreshRepo.findOne({
-      where: { token: refreshToken, isRevoked: false },
-      relations: { user: true },
-    });
-    if (!stored || stored.expiresAt < new Date()) {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-
     try {
       await this.jwt.verifyAsync(refreshToken, {
         secret: this.config.get<string>('jwt.refreshSecret'),
       });
     } catch {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const tokenHash = hashToken(refreshToken);
+    const stored = await this.refreshRepo.findOne({
+      where: { tokenHash, isRevoked: false },
+      relations: { user: true },
+    });
+    if (!stored || stored.expiresAt < new Date()) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
@@ -74,7 +76,8 @@ export class AuthService {
   }
 
   async logout(refreshToken: string) {
-    await this.refreshRepo.update({ token: refreshToken }, { isRevoked: true });
+    const tokenHash = hashToken(refreshToken);
+    await this.refreshRepo.update({ tokenHash }, { isRevoked: true });
     return { success: true };
   }
 
@@ -180,7 +183,7 @@ export class AuthService {
     await this.refreshRepo.save(
       this.refreshRepo.create({
         userId,
-        token: refreshToken,
+        tokenHash: hashToken(refreshToken),
         expiresAt,
       }),
     );

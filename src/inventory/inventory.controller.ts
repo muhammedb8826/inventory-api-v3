@@ -13,13 +13,17 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
+import {
+  excelUploadOptions,
+  imageUploadOptions,
+} from '../common/upload/multer-options';
 import { CreateInventoryDto, UpdateInventoryDto } from './dto/inventory.dto';
 import { InventoryListQueryDto } from './dto/inventory-list-query.dto';
 import { LowStockListQueryDto } from './dto/low-stock-list-query.dto';
@@ -49,6 +53,8 @@ function requestBaseUrl(req: RequestLike) {
   return host ? `${proto}://${host}` : undefined;
 }
 
+@ApiTags('inventory')
+@ApiBearerAuth()
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class InventoryController {
@@ -62,10 +68,7 @@ export class InventoryController {
 
   @Get('low-stock')
   @RequirePermissions('inventory.read')
-  findLowStock(
-    @Req() req: RequestLike,
-    @Query() query: LowStockListQueryDto,
-  ) {
+  findLowStock(@Req() req: RequestLike, @Query() query: LowStockListQueryDto) {
     return this.inventoryService.findLowStock(query, requestBaseUrl(req));
   }
 
@@ -98,7 +101,7 @@ export class InventoryController {
 
   @Post('import')
   @RequirePermissions('inventory.import')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', excelUploadOptions))
   importExcel(
     @Query('locationId') locationId: string,
     @UploadedFile() file: UploadedExcelFile,
@@ -133,22 +136,13 @@ export class InventoryController {
 
   @Post(':id/image')
   @RequirePermissions('inventory.write')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', imageUploadOptions))
   uploadImage(
     @Req() req: RequestLike,
     @Param('id') id: string,
     @UploadedFile() file: UploadedImageFile,
   ) {
-    return this.inventoryService.uploadItemImage(
-      id,
-      file,
-      requestBaseUrl(req),
-    );
+    return this.inventoryService.uploadItemImage(id, file, requestBaseUrl(req));
   }
 
   @Delete(':id/image')
