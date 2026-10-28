@@ -59,11 +59,14 @@ export class BomsController {
   costRollup(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('quantity') quantity?: string,
+    @Query('mode') mode?: string,
   ) {
     const qty = quantity ? parseFloat(quantity) : 1;
+    const fullExplode = mode === 'leaves' || mode === 'full';
     return this.bomsService.costRollup(
       id,
       Number.isFinite(qty) && qty > 0 ? qty : 1,
+      fullExplode,
     );
   }
 

@@ -33,8 +33,9 @@ export class CreateProductionOrderDto {
   quantityPlanned: number;
 
   /**
-   * If true, flatten SEMI/FINISHED components to leaf RAW (ignore stocked semis).
-   * Default false: issue BOM lines as written (e.g. consume Seat/Back stock).
+   * Force-explode all SEMI/FINISHED components to leaves (ignore phantom flags).
+   * Default false: industry behavior — explode only phantom components;
+   * stocked SEMIs are issued as-is.
    */
   @IsOptional()
   @IsBoolean()

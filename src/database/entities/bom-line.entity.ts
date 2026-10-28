@@ -39,6 +39,13 @@ export class BomLine {
   })
   scrapPercent: string;
 
+  /**
+   * Phantom / non-stocked: do not issue this component; explode its default BOM
+   * into the parent order (industry kit / phantom assembly).
+   */
+  @Column({ name: 'is_phantom', default: false })
+  isPhantom: boolean;
+
   @ManyToOne(() => Bom, (bom) => bom.lines, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'bom_id' })
   bom: Bom;

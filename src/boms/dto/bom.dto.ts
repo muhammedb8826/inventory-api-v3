@@ -32,6 +32,11 @@ export class BomLineDto {
   @Min(0)
   @Max(100)
   scrapPercent?: number;
+
+  /** Pass-through component (do not stock-issue; explode child BOM). */
+  @IsOptional()
+  @IsBoolean()
+  isPhantom?: boolean;
 }
 
 /** PATCH lines — ignores read-only fields from GET responses. */

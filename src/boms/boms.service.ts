@@ -117,13 +117,7 @@ export class BomsService {
         yieldPercent: (dto.yieldPercent ?? 100).toFixed(2),
         effectiveFrom: dto.effectiveFrom ?? null,
         effectiveTo: dto.effectiveTo ?? null,
-        lines: dto.lines.map((line) =>
-          Object.assign(new BomLine(), {
-            componentItemId: line.componentItemId,
-            quantity: line.quantity.toFixed(3),
-            scrapPercent: (line.scrapPercent ?? 0).toFixed(2),
-          }),
-        ),
+        lines: await this.buildLineEntities(dto.lines),
       }),
     );
     return this.findOne(bom.id);
@@ -166,13 +160,15 @@ export class BomsService {
       await this.assertLines(bom.finishedItemId, dto.lines);
       const lineRepo = this.bomRepo.manager.getRepository(BomLine);
       await lineRepo.delete({ bomId: id });
+      const built = await this.buildLineEntities(dto.lines);
       await lineRepo.save(
-        dto.lines.map((line) =>
+        built.map((line) =>
           lineRepo.create({
             bomId: id,
             componentItemId: line.componentItemId,
-            quantity: line.quantity.toFixed(3),
-            scrapPercent: (line.scrapPercent ?? 0).toFixed(2),
+            quantity: line.quantity,
+            scrapPercent: line.scrapPercent,
+            isPhantom: line.isPhantom,
           }),
         ),
       );
@@ -193,6 +189,7 @@ export class BomsService {
         componentItemId: l.componentItemId,
         quantity: parseFloat(l.quantity),
         scrapPercent: parseFloat(l.scrapPercent) || 0,
+        isPhantom: l.isPhantom === true,
       }));
 
     await this.assertFinishedItem(source.finishedItemId);
@@ -225,13 +222,7 @@ export class BomsService {
         effectiveFrom: dto.effectiveFrom ?? source.effectiveFrom,
         effectiveTo: dto.effectiveTo ?? source.effectiveTo,
         revisedFromId: source.id,
-        lines: lines.map((line) =>
-          Object.assign(new BomLine(), {
-            componentItemId: line.componentItemId,
-            quantity: line.quantity.toFixed(3),
-            scrapPercent: (line.scrapPercent ?? 0).toFixed(2),
-          }),
-        ),
+        lines: await this.buildLineEntities(lines),
       }),
     );
 
@@ -301,9 +292,22 @@ export class BomsService {
     }));
   }
 
-  /** Cost rollup using current weighted-avg purchase prices (multi-level). */
-  async costRollup(id: string, quantity = 1) {
-    const exploded = await this.explode(id, { quantity });
+  /**
+   * Cost rollup: stocked (non-phantom) SEMIs use their avg stock cost;
+   * phantoms explode to children (industry assembly costing).
+   * Pass `fullExplode=true` for leaf-RAW-only rollup.
+   */
+  async costRollup(id: string, quantity = 1, fullExplode = false) {
+    const bom = await this.findOne(id);
+    const leaves = await this.explodeBom(
+      bom,
+      quantity,
+      10,
+      0,
+      [bom.finishedItemId],
+      fullExplode ? 'always' : 'phantoms',
+    );
+    const aggregated = this.aggregateLeaves(leaves);
     let materialCost = 0;
     const lines: {
       componentItemId: string;
@@ -313,7 +317,7 @@ export class BomsService {
       componentItem?: Item;
     }[] = [];
 
-    for (const line of exploded.lines) {
+    for (const line of aggregated) {
       const unitCost = await this.avgUnitCost(line.componentItemId);
       const extended = unitCost * line.quantity;
       materialCost += extended;
@@ -326,7 +330,7 @@ export class BomsService {
       });
     }
 
-    const yieldPct = exploded.yieldPercent || 100;
+    const yieldPct = parseFloat(bom.yieldPercent) || 100;
     const expectedFg = quantity * (yieldPct / 100);
     const unitFgCost =
       expectedFg > 0 ? materialCost / expectedFg : materialCost;
@@ -335,6 +339,7 @@ export class BomsService {
       bomId: id,
       quantity,
       yieldPercent: yieldPct,
+      mode: fullExplode ? 'leaves' : 'phantoms',
       expectedFinishedQty: expectedFg,
       materialCost: Number(materialCost.toFixed(2)),
       unitFinishedCost: Number(unitFgCost.toFixed(2)),
@@ -347,16 +352,18 @@ export class BomsService {
   }
 
   /**
-   * Resolve flat leaf requirements for production (multi-level).
-   * Public for ProductionService.
+   * Production material list.
+   * Default (`forceExplodeAll=false`): explode phantom components only;
+   * stocked SEMIs stay as issue lines.
+   * `forceExplodeAll=true`: flatten all SEMI/FINISHED to leaves.
    */
   async explodeForProduction(
     bomId: string,
     quantityPlanned: number,
+    forceExplodeAll = false,
   ): Promise<{ componentItemId: string; quantityRequired: number }[]> {
     const bom = await this.findOne(bomId);
     const yieldPct = parseFloat(bom.yieldPercent) || 100;
-    // Components sized for planned FG; yield increases material need.
     const materialMultiplier = yieldPct > 0 ? 100 / yieldPct : 1;
     const leaves = await this.explodeBom(
       bom,
@@ -364,6 +371,7 @@ export class BomsService {
       10,
       0,
       [bom.finishedItemId],
+      forceExplodeAll ? 'always' : 'phantoms',
     );
     return this.aggregateLeaves(leaves).map((l) => ({
       componentItemId: l.componentItemId,
@@ -401,12 +409,17 @@ export class BomsService {
     return bom;
   }
 
+  /**
+   * @param mode `always` = classic MRP explode through every SEMI/FINISHED BOM.
+   * `phantoms` = only pass through phantom lines/items (stocked assemblies stay).
+   */
   private async explodeBom(
     bom: Bom,
     quantity: number,
     maxDepth: number,
     depth: number,
     path: string[],
+    mode: 'always' | 'phantoms' = 'always',
   ): Promise<ExplodedBomLine[]> {
     if (depth >= maxDepth) {
       throw new BadRequestException(
@@ -443,11 +456,14 @@ export class BomsService {
         );
       }
 
-      // Multi-level: if SEMI/FINISHED has a default BOM, explode further
-      if (
+      const isPhantom = line.isPhantom === true || component.isPhantom === true;
+      const canHaveChildBom =
         component.itemType === ItemType.SEMI ||
-        component.itemType === ItemType.FINISHED
-      ) {
+        component.itemType === ItemType.FINISHED;
+      const shouldExplode =
+        canHaveChildBom && (mode === 'always' || isPhantom);
+
+      if (shouldExplode) {
         const childBom = await this.findDefaultBom(line.componentItemId);
         if (childBom && childBom.lines?.length) {
           const nested = await this.explodeBom(
@@ -456,9 +472,15 @@ export class BomsService {
             maxDepth,
             depth + 1,
             [...path, line.componentItemId],
+            mode,
           );
           result.push(...nested);
           continue;
+        }
+        if (isPhantom && mode === 'phantoms') {
+          throw new BadRequestException(
+            `Phantom component "${component.description}" has no active default BOM to explode`,
+          );
         }
       }
 
@@ -474,6 +496,29 @@ export class BomsService {
     }
 
     return result;
+  }
+
+  /** Resolve line phantoms: explicit DTO flag, else inherit item.isPhantom. */
+  private async buildLineEntities(lines: BomLineDto[]): Promise<BomLine[]> {
+    const out: BomLine[] = [];
+    for (const line of lines) {
+      let isPhantom = line.isPhantom;
+      if (isPhantom === undefined) {
+        const item = await this.itemRepo.findOne({
+          where: { id: line.componentItemId },
+        });
+        isPhantom = item?.isPhantom === true;
+      }
+      out.push(
+        Object.assign(new BomLine(), {
+          componentItemId: line.componentItemId,
+          quantity: line.quantity.toFixed(3),
+          scrapPercent: (line.scrapPercent ?? 0).toFixed(2),
+          isPhantom: isPhantom === true,
+        }),
+      );
+    }
+    return out;
   }
 
   private aggregateLeaves(leaves: ExplodedBomLine[]): ExplodedBomLine[] {

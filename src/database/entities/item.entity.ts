@@ -43,6 +43,13 @@ export class Item extends UuidBaseEntity {
   })
   itemType: ItemType;
 
+  /**
+   * Phantom item: when used as a BOM component, requirements pass through to its
+   * default BOM (unless the BOM line overrides isPhantom).
+   */
+  @Column({ name: 'is_phantom', default: false })
+  isPhantom: boolean;
+
   /** Relative path e.g. `/uploads/items/item-….webp`. */
   @Column({ name: 'image_path', type: 'varchar', length: 500, nullable: true })
   imagePath: string | null;

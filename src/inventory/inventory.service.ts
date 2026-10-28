@@ -266,6 +266,7 @@ export class InventoryService {
             description: dto.description,
             unit: dto.unit ?? null,
             itemType: dto.itemType,
+            isPhantom: dto.isPhantom === true,
           }),
         );
       } catch (err) {
@@ -332,7 +333,8 @@ export class InventoryService {
       dto.sku !== undefined ||
       dto.barcode !== undefined ||
       dto.unit !== undefined ||
-      dto.itemType !== undefined;
+      dto.itemType !== undefined ||
+      dto.isPhantom !== undefined;
 
     if (itemChanged) {
       if (dto.description !== undefined) {
@@ -378,6 +380,9 @@ export class InventoryService {
       }
       if (dto.itemType !== undefined) {
         stock.item.itemType = dto.itemType;
+      }
+      if (dto.isPhantom !== undefined) {
+        stock.item.isPhantom = dto.isPhantom;
       }
       try {
         await this.itemRepo.save(stock.item);

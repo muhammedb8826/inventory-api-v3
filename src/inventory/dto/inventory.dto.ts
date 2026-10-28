@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -43,6 +44,11 @@ export class CreateInventoryDto {
   @IsEnum(ItemType)
   itemType?: ItemType;
 
+  /** Phantom / non-stocked assembly (pass-through in BOMs by default). */
+  @IsOptional()
+  @IsBoolean()
+  isPhantom?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -73,6 +79,10 @@ export class UpdateInventoryDto {
   @IsOptional()
   @IsEnum(ItemType)
   itemType?: ItemType;
+
+  @IsOptional()
+  @IsBoolean()
+  isPhantom?: boolean;
 
   @IsOptional()
   @Type(() => Number)

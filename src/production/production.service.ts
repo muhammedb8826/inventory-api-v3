@@ -130,27 +130,13 @@ export class ProductionService {
       }
     }
 
-    // Default: use BOM lines as written (stocked SEMIs like Seat/Back).
-    // explodeBom=true flattens through SEMI BOMs to RAW (phantom / MRP style).
-    const explode = dto.explodeBom === true;
-    let lineSpecs: { componentItemId: string; quantityRequired: number }[];
-    if (explode) {
-      lineSpecs = await this.bomsService.explodeForProduction(
-        bom.id,
-        dto.quantityPlanned,
-      );
-    } else {
-      const yieldPct = parseFloat(bom.yieldPercent) || 100;
-      const materialMultiplier = yieldPct > 0 ? 100 / yieldPct : 1;
-      lineSpecs = bom.lines.map((line) => {
-        const scrap = parseFloat(line.scrapPercent) || 0;
-        const perUnit = parseFloat(line.quantity) * (1 + scrap / 100);
-        return {
-          componentItemId: line.componentItemId,
-          quantityRequired: perUnit * dto.quantityPlanned * materialMultiplier,
-        };
-      });
-    }
+    // Industry: explode phantom components only; stocked SEMIs issued as-is.
+    // explodeBom=true forces full flatten to leaf RAW (ignore phantom flags).
+    const lineSpecs = await this.bomsService.explodeForProduction(
+      bom.id,
+      dto.quantityPlanned,
+      dto.explodeBom === true,
+    );
 
     if (!lineSpecs.length) {
       throw new BadRequestException('BOM has no component requirements');
