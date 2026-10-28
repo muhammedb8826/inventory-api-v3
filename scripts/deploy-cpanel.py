@@ -8,6 +8,40 @@ import ssl
 import sys
 
 
+def tls_context():
+    """Verify by default; allow a supplied hosting CA or an explicit override."""
+    verify = (os.environ.get('FTP_TLS_VERIFY', '') or 'true').lower()
+    if verify not in ('true', 'false'):
+        raise ValueError('FTP_TLS_VERIFY must be true or false.')
+    context = ssl.create_default_context()
+    certificate = os.environ.get('FTP_CA_CERT', '').strip()
+    if certificate:
+        context.load_verify_locations(cadata=certificate)
+    if verify == 'false':
+        print('WARNING: FTP_TLS_VERIFY=false disables server identity verification. '
+              'The connection is encrypted but the FTP server is not authenticated.', file=sys.stderr)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+def report_error(error):
+    if isinstance(error, ssl.SSLCertVerificationError):
+        # Verification details contain certificate/hostname information, not credentials.
+        print(f'FTPS certificate verification failed (code {error.verify_code}): '
+              f'{error.verify_message}', file=sys.stderr)
+        print('Use the FTP hostname covered by the hosting certificate. For a private CA, '
+              'set the FTP_CA_CERT secret to the trusted PEM certificate. Renew expired '
+              'certificates or have the host repair an incomplete certificate chain. '
+              'See docs/CPANEL_DEPLOYMENT.md for the explicit verification override.', file=sys.stderr)
+    elif isinstance(error, ValueError):
+        print(f'Deployment configuration error: {error}', file=sys.stderr)
+    else:
+        # Do not print arbitrary FTP responses, which can contain private paths.
+        print(f'Deployment failed ({type(error).__name__}). '
+              'Check FTP connectivity, credentials, target directory and permissions.', file=sys.stderr)
+
+
 def deploy():
     required = ('FTP_SERVER_VGATE', 'FTP_USERNAME_VGATE', 'FTP_PASSWORD_VGATE', 'CPANEL_DIR_VGATE')
     if any(not os.environ.get(key) for key in required):
@@ -24,7 +58,7 @@ def deploy():
     payload = Path('release-payload')
     if not (payload / 'package.json').is_file():
         raise ValueError('Missing release payload.')
-    client = ftplib.FTP_TLS(context=ssl.create_default_context()) if protocol == 'ftps' else ftplib.FTP()
+    client = ftplib.FTP_TLS(context=tls_context()) if protocol == 'ftps' else ftplib.FTP()
     client.connect(host, int(os.environ.get('FTP_PORT', '21') or '21'), timeout=90)
     try:
         client.login(os.environ['FTP_USERNAME_VGATE'], os.environ['FTP_PASSWORD_VGATE'])
@@ -68,6 +102,5 @@ if __name__ == '__main__':
     try:
         deploy()
     except Exception as error:
-        # Avoid server responses that might contain credentials or private paths.
-        print(f'Deployment failed ({type(error).__name__}). Check secrets, TLS, path and FTP permissions.', file=sys.stderr)
+        report_error(error)
         sys.exit(1)

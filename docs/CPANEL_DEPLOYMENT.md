@@ -37,3 +37,16 @@ The uploader overwrites only staged release files; it does not delete remote fil
 An FTP upload is not atomic and has no automatic rollback. Deploy during a maintenance window when needed; retain a known-good backup. Obsolete remote files are intentionally preserved and may require a separate reviewed cleanup. Green upload status confirms file transfer, not successful application startup.
 
 FTP/TLS behavior follows Python's [ftplib documentation](https://docs.python.org/3/library/ftplib.html).
+
+## FTPS certificate verification failure
+
+`SSLCertVerificationError` occurs during TLS setup, before the upload. Both GitHub deployment workflows now default `FTP_TLS_VERIFY` to `false` at the hosting owner's request for factory.vgatefurnishing.com. FTPS encryption remains enabled, but server identity verification is skipped. Set repository variable `FTP_TLS_VERIFY=true` to restore verification after the hosting certificate is corrected. The standalone Python script still defaults to verification when the environment variable is absent.
+
+1. Read the new verification code/message in the workflow log. A hostname mismatch means `FTP_SERVER_VGATE` must use the hostname covered by the FTP service certificate (often the hosting server hostname supplied by your provider, rather than your website domain).
+2. For an expired certificate or incomplete chain, ask the hosting provider to renew or repair the FTP service certificate. Changing the website certificate alone might not change the FTP service certificate.
+3. For an intentional private/self-signed hosting certificate, obtain the trusted PEM CA certificate from your provider and add it as repository secret `FTP_CA_CERT` in both repositories. Verification and hostname checks remain enabled.
+4. If you knowingly need to proceed without server identity verification, add repository **variable** `FTP_TLS_VERIFY=false` in each repository. Traffic remains encrypted, but this permits server impersonation. The workflows use this explicit override by default; they never retry a failed verified connection with weaker settings. Set it to `true` after the certificate is fixed. Switching to plain FTP is not necessary for this error.
+
+Commit and push the workflow/script changes before rerunning. A rerun of an older workflow run uses the older commit; run CI/Quality on the updated production branch instead.
+
+Certificate trust uses Python's [SSL context API](https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_verify_locations).

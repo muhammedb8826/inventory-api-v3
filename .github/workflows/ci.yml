@@ -120,6 +120,8 @@ jobs:
           CPANEL_DIR_VGATE: ${{ secrets.CPANEL_DIR_VGATE }}
           FTP_PROTOCOL: ${{ vars.FTP_PROTOCOL }}
           FTP_PORT: ${{ vars.FTP_PORT }}
+          FTP_TLS_VERIFY: ${{ vars.FTP_TLS_VERIFY || 'false' }}
+          FTP_CA_CERT: ${{ secrets.FTP_CA_CERT }}
           CPANEL_AUTO_RESTART: ${{ vars.CPANEL_AUTO_RESTART }}
         run: python scripts/deploy-cpanel.py
       - name: Deployment summary
