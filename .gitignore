@@ -1,7 +1,5 @@
 # compiled output
 /dist
-/.dist-staging
-/.dist-backup
 /node_modules
 /build
 

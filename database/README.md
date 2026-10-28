@@ -22,12 +22,12 @@ DB_SEED=true npm run seed
 
 ## Production checklist (cPanel / server)
 
-Build tools (`@nestjs/cli`, `typescript`, …) are in **dependencies** so the server can compile. `npm run build` writes to `.dist-staging` then swaps into `dist/` — a failed build does **not** wipe the live `dist/`.
+`@nestjs/cli` and `typescript` are in **dependencies** so `npm run build` works on the server (same as a normal Nest app).
 
 ```bash
 # after git pull / upload of source
 npm install
-npm run deploy:prod   # build → migration:run:prod → touch tmp/restart.txt
+npm run deploy:prod   # nest build → migration:run:prod → touch tmp/restart.txt
 ```
 
 Or step-by-step: `npm run build` → `npm run migration:run:prod` → `touch tmp/restart.txt`.
