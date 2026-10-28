@@ -22,15 +22,15 @@ DB_SEED=true npm run seed
 
 ## Production checklist (cPanel / server)
 
-`@nestjs/cli` and `typescript` are in **dependencies** so `npm run build` works on the server (same as a normal Nest app).
+`@nestjs/cli` and `typescript` are in **dependencies** so `npm run build` works on the server (same as a normal Nest app). Sync the Nest workspace files too: `nest-cli.json`, `tsconfig.json`, `tsconfig.build.json`, `package.json`, and `src/`.
 
 ```bash
-# after git pull / upload of source
+# after sync / git pull
 npm install
-npm run deploy:prod   # nest build → migration:run:prod → touch tmp/restart.txt
+npm run deploy:prod   # nest build → check dist/main.js → migrations → restart
 ```
 
-Or step-by-step: `npm run build` → `npm run migration:run:prod` → `touch tmp/restart.txt`.
+Or: `npm run build` → `ls dist/main.js` → `npm run migration:run:prod` → `touch tmp/restart.txt`.
 
 - [ ] `NODE_ENV=production`
 - [ ] `DB_SYNCHRONIZE=false` (ignored in production even if set to `true`)
