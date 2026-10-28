@@ -30,7 +30,9 @@ Before changing existing staff access, assign locations or grant locations.all t
 
 ## Encrypted release workflow
 
-Legacy plain FTP workflows are disabled. Configure GitHub production environments in BOTH repositories:
+The default CI workflow now supports cPanel FTP/FTPS upload after quality checks. See [cPanel deployment](CPANEL_DEPLOYMENT.md) for the existing VGATE secrets and required host steps. The optional SSH release below additionally supports remote commands and release rollback.
+
+For SSH releases, configure GitHub production environments in BOTH repositories:
 
 - Secrets: SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS (verified out of band), SSH_HOST, SSH_USER.
 - Variables: DEPLOY_ROOT (absolute dedicated app directory), HEALTH_URL (public HTTPS health endpoint), API_URL for the web build.

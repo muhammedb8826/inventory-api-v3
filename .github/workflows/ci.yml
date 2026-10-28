@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   quality:
@@ -73,3 +74,57 @@ jobs:
 
       - name: E2E smoke
         run: npx jest --config ./test/jest-e2e.json --runInBand
+      - name: Stage cPanel release
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p release-payload
+          cp -R dist scripts release-payload/
+          cp package.json package-lock.json release-payload/
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: cpanel-release
+          path: release-payload/
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy to cPanel
+    needs: quality
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: cpanel-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: cpanel-release
+          path: release-payload
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Upload tested release
+        env:
+          FTP_SERVER_VGATE: ${{ secrets.FTP_SERVER_VGATE }}
+          FTP_USERNAME_VGATE: ${{ secrets.FTP_USERNAME_VGATE }}
+          FTP_PASSWORD_VGATE: ${{ secrets.FTP_PASSWORD_VGATE }}
+          CPANEL_DIR_VGATE: ${{ secrets.CPANEL_DIR_VGATE }}
+          FTP_PROTOCOL: ${{ vars.FTP_PROTOCOL }}
+          FTP_PORT: ${{ vars.FTP_PORT }}
+          CPANEL_AUTO_RESTART: ${{ vars.CPANEL_AUTO_RESTART }}
+        run: python scripts/deploy-cpanel.py
+      - name: Deployment summary
+        run: |
+          echo '### cPanel upload completed' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Only the tested release payload was uploaded. FTP cannot install dependencies or run migrations.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'If package dependencies changed, run NPM Install in cPanel. For API schema changes, back up and run migrations before restarting.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Restart in cPanel unless CPANEL_AUTO_RESTART=true is configured and host prerequisites are already satisfied.' >> "$GITHUB_STEP_SUMMARY"
