@@ -20,11 +20,21 @@ DB_SEED=true npm run seed
 # or set DB_SEED=true so SeedService runs on app boot
 ```
 
-## Production checklist
+## Production checklist (cPanel / server)
+
+Build tools (`@nestjs/cli`, `typescript`, …) are in **dependencies** so the server can compile. `npm run build` writes to `.dist-staging` then swaps into `dist/` — a failed build does **not** wipe the live `dist/`.
+
+```bash
+# after git pull / upload of source
+npm install
+npm run deploy:prod   # build → migration:run:prod → touch tmp/restart.txt
+```
+
+Or step-by-step: `npm run build` → `npm run migration:run:prod` → `touch tmp/restart.txt`.
 
 - [ ] `NODE_ENV=production`
 - [ ] `DB_SYNCHRONIZE=false` (ignored in production even if set to `true`)
-- [ ] Run `npm run migration:run:prod` on **every** deploy / before start (uses `dist/`; local/CI keep `migration:run`)
+- [ ] Run migrations on every deploy (`deploy:prod` or `migration:run:prod`)
 - [ ] Set `DB_SEED=false` after the first seed
 - [ ] Never use TypeORM `synchronize` against production data
 - [ ] API clients use `/api/v1` (OpenAPI at `/api/docs`)
