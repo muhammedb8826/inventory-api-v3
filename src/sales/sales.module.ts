@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BanksModule } from '../banks/banks.module';
 import { CustomerCredit } from '../database/entities/customer-credit.entity';
+import { CustomerInquiry } from '../database/entities/customer-inquiry.entity';
+import { ProductionOrder } from '../database/entities/production-order.entity';
 import { Sale } from '../database/entities/sale.entity';
 import { SaleReturn } from '../database/entities/sale-return.entity';
 import { User } from '../database/entities/user.entity';
@@ -12,7 +14,14 @@ import { SalesService } from './sales.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Sale, SaleReturn, CustomerCredit, User]),
+    TypeOrmModule.forFeature([
+      Sale,
+      SaleReturn,
+      CustomerCredit,
+      User,
+      CustomerInquiry,
+      ProductionOrder,
+    ]),
     InventoryModule,
     BanksModule,
     NotificationsModule,

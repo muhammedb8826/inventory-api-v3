@@ -460,8 +460,7 @@ export class BomsService {
       const canHaveChildBom =
         component.itemType === ItemType.SEMI ||
         component.itemType === ItemType.FINISHED;
-      const shouldExplode =
-        canHaveChildBom && (mode === 'always' || isPhantom);
+      const shouldExplode = canHaveChildBom && (mode === 'always' || isPhantom);
 
       if (shouldExplode) {
         const childBom = await this.findDefaultBom(line.componentItemId);

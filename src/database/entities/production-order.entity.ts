@@ -9,9 +9,11 @@ import {
 } from 'typeorm';
 import { ProductionOrderStatus } from '../../common/enums';
 import { Bom } from './bom.entity';
+import { CustomerInquiry } from './customer-inquiry.entity';
 import { Item } from './item.entity';
 import { Location } from './location.entity';
 import { ProductionOrderLine } from './production-order-line.entity';
+import { Sale } from './sale.entity';
 import { User } from './user.entity';
 import { UuidBaseEntity } from './uuid-base.entity';
 
@@ -25,6 +27,14 @@ export class ProductionOrder extends UuidBaseEntity {
 
   @Column({ name: 'finished_item_id', type: 'uuid' })
   finishedItemId: string;
+
+  /** Originating customer inquiry (MTO spine). */
+  @Column({ name: 'inquiry_id', type: 'uuid', nullable: true })
+  inquiryId: string | null;
+
+  /** Optional sales order / sale this production fulfills. */
+  @Column({ name: 'sale_id', type: 'uuid', nullable: true })
+  saleId: string | null;
 
   /** Component issue location. */
   @Column({ name: 'location_id', type: 'uuid' })
@@ -91,6 +101,14 @@ export class ProductionOrder extends UuidBaseEntity {
   @ManyToOne(() => Item)
   @JoinColumn({ name: 'finished_item_id' })
   finishedItem: Item;
+
+  @ManyToOne(() => CustomerInquiry, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'inquiry_id' })
+  inquiry: CustomerInquiry | null;
+
+  @ManyToOne(() => Sale, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'sale_id' })
+  sale: Sale | null;
 
   @ManyToOne(() => Location)
   @JoinColumn({ name: 'location_id' })

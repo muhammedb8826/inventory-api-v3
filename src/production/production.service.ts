@@ -5,7 +5,12 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { ProductionOrderStatus, StockMovementType } from '../common/enums';
+import {
+  InquiryAssignmentStatus,
+  InquiryStatus,
+  ProductionOrderStatus,
+  StockMovementType,
+} from '../common/enums';
 import {
   applyDateRangeToQb,
   applyIlikeSearch,
@@ -13,18 +18,22 @@ import {
 } from '../common/utils/query.util';
 import { BomsService } from '../boms/boms.service';
 import { Bom } from '../database/entities/bom.entity';
+import { CustomerInquiry } from '../database/entities/customer-inquiry.entity';
 import { Item } from '../database/entities/item.entity';
 import { Location } from '../database/entities/location.entity';
 import { ProductionOrderLine } from '../database/entities/production-order-line.entity';
 import { ProductionOrder } from '../database/entities/production-order.entity';
+import { Sale } from '../database/entities/sale.entity';
 import { StockService } from '../inventory/stock.service';
 import { LowStockService } from '../notifications/low-stock.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CompleteProductionDto,
   CreateProductionOrderDto,
   IssueProductionDto,
   ProductionOrderListQueryDto,
   ScrapProductionDto,
+  StartProductionFromInquiryDto,
   UnbuildProductionDto,
 } from './dto/production-order.dto';
 
@@ -39,11 +48,16 @@ export class ProductionService {
     private readonly locationRepo: Repository<Location>,
     @InjectRepository(Item)
     private readonly itemRepo: Repository<Item>,
+    @InjectRepository(CustomerInquiry)
+    private readonly inquiryRepo: Repository<CustomerInquiry>,
+    @InjectRepository(Sale)
+    private readonly saleRepo: Repository<Sale>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly stockService: StockService,
     private readonly lowStockService: LowStockService,
     private readonly bomsService: BomsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   findAll(query: ProductionOrderListQueryDto) {
@@ -56,6 +70,7 @@ export class ProductionService {
       .leftJoinAndSelect('po.lines', 'lines')
       .leftJoinAndSelect('lines.componentItem', 'componentItem')
       .leftJoinAndSelect('po.createdBy', 'createdBy')
+      .leftJoinAndSelect('po.inquiry', 'inquiry')
       .orderBy('po.created_at', 'DESC');
 
     if (query.locationId) {
@@ -71,6 +86,14 @@ export class ProductionService {
     }
     if (query.bomId) {
       qb.andWhere('po.bom_id = :bomId', { bomId: query.bomId });
+    }
+    if (query.inquiryId) {
+      qb.andWhere('po.inquiry_id = :inquiryId', {
+        inquiryId: query.inquiryId,
+      });
+    }
+    if (query.saleId) {
+      qb.andWhere('po.sale_id = :saleId', { saleId: query.saleId });
     }
     if (query.status) {
       qb.andWhere('po.status = :status', { status: query.status });
@@ -96,6 +119,8 @@ export class ProductionService {
         finishedLocation: true,
         bom: true,
         createdBy: true,
+        inquiry: true,
+        sale: true,
         lines: { componentItem: true },
       },
     });
@@ -130,6 +155,11 @@ export class ProductionService {
       }
     }
 
+    const inquiryId = dto.inquiryId
+      ? await this.assertInquiryForProduction(dto.inquiryId)
+      : null;
+    const saleId = dto.saleId ? await this.assertSaleLink(dto.saleId) : null;
+
     // Industry: explode phantom components only; stocked SEMIs issued as-is.
     // explodeBom=true forces full flatten to leaf RAW (ignore phantom flags).
     const lineSpecs = await this.bomsService.explodeForProduction(
@@ -143,12 +173,17 @@ export class ProductionService {
     }
 
     const orderNumber = await this.nextOrderNumber();
+    const notes =
+      dto.notes?.trim() ||
+      (inquiryId ? `MTO from inquiry ${inquiryId.slice(0, 8)}` : null);
 
     const order = await this.orderRepo.save(
       this.orderRepo.create({
         orderNumber,
         bomId: bom.id,
         finishedItemId: bom.finishedItemId,
+        inquiryId,
+        saleId,
         locationId: dto.locationId,
         finishedLocationId,
         quantityPlanned: dto.quantityPlanned.toFixed(3),
@@ -156,7 +191,7 @@ export class ProductionService {
         quantityScrapped: '0.000',
         materialsReserved: false,
         status: ProductionOrderStatus.DRAFT,
-        notes: dto.notes?.trim() || null,
+        notes,
         createdById: userId ?? null,
         lines: lineSpecs.map((spec) =>
           Object.assign(new ProductionOrderLine(), {
@@ -169,10 +204,98 @@ export class ProductionService {
       }),
     );
 
+    if (inquiryId) {
+      await this.inquiryRepo.update(
+        { id: inquiryId },
+        {
+          status: InquiryStatus.IN_PROGRESS,
+          readyForSaleAt: null,
+        },
+      );
+    }
+
     return this.findOne(order.id);
   }
 
-  async release(id: string) {
+  /**
+   * Start production from an accepted inquiry: resolve item + default BOM.
+   */
+  async createFromInquiry(dto: StartProductionFromInquiryDto, userId?: string) {
+    const inquiry = await this.inquiryRepo.findOne({
+      where: { id: dto.inquiryId },
+      relations: { lines: { item: true } },
+    });
+    if (!inquiry) throw new NotFoundException('Inquiry not found');
+    if (
+      inquiry.status === InquiryStatus.CANCELLED ||
+      inquiry.status === InquiryStatus.CLOSED ||
+      inquiry.status === InquiryStatus.CONVERTED
+    ) {
+      throw new BadRequestException(
+        `Cannot start production for inquiry in status ${inquiry.status}`,
+      );
+    }
+    if (
+      inquiry.assignmentStatus !== InquiryAssignmentStatus.ACCEPTED &&
+      inquiry.assignmentStatus !== InquiryAssignmentStatus.UNASSIGNED
+    ) {
+      // Allow ACCEPTED (normal) or UNASSIGNED for small shops; block PENDING/DECLINED.
+      if (inquiry.assignmentStatus === InquiryAssignmentStatus.PENDING) {
+        throw new BadRequestException(
+          'Accept the inquiry assignment before starting production',
+        );
+      }
+    }
+
+    const lines = inquiry.lines ?? [];
+    if (!lines.length && !dto.itemId && !dto.bomId) {
+      throw new BadRequestException(
+        'Inquiry has no item lines — pass bomId (and item via BOM) explicitly',
+      );
+    }
+
+    let bomId = dto.bomId;
+    let quantity =
+      dto.quantityPlanned ??
+      (lines[0]?.quantity ? parseFloat(lines[0].quantity) : 1);
+    if (!Number.isFinite(quantity) || quantity <= 0) quantity = 1;
+
+    if (!bomId) {
+      const itemId = dto.itemId ?? lines.find((l) => l.itemId)?.itemId ?? null;
+      if (!itemId) {
+        throw new BadRequestException(
+          'Pass itemId or bomId — inquiry has no item lines',
+        );
+      }
+      const defaultBom = await this.bomsService.findDefaultBom(itemId);
+      if (!defaultBom) {
+        throw new BadRequestException(
+          'No active default BOM for the inquiry item — create a BOM or pass bomId',
+        );
+      }
+      bomId = defaultBom.id;
+      const line = lines.find((l) => l.itemId === itemId);
+      if (!dto.quantityPlanned && line?.quantity) {
+        const q = parseFloat(line.quantity);
+        if (Number.isFinite(q) && q > 0) quantity = q;
+      }
+    }
+
+    return this.create(
+      {
+        bomId,
+        locationId: dto.locationId,
+        finishedLocationId: dto.finishedLocationId,
+        quantityPlanned: quantity,
+        explodeBom: dto.explodeBom,
+        inquiryId: inquiry.id,
+        notes: dto.notes,
+      },
+      userId,
+    );
+  }
+
+  async release(id: string, actorUserId?: string) {
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
       const order = await orderRepo.findOne({
@@ -225,7 +348,17 @@ export class ProductionService {
       await orderRepo.save(order);
     });
 
-    return this.findOne(id);
+    const released = await this.findOne(id);
+    await this.notifications.onProductionReleased({
+      productionOrderId: released.id,
+      orderNumber: released.orderNumber,
+      finishedItemLabel:
+        released.finishedItem?.description ?? released.finishedItemId,
+      quantityPlanned: released.quantityPlanned,
+      actorUserId: actorUserId ?? null,
+      inquiryId: released.inquiryId,
+    });
+    return released;
   }
 
   async issue(id: string, dto: IssueProductionDto) {
@@ -366,13 +499,14 @@ export class ProductionService {
     return this.findOne(id);
   }
 
-  async complete(id: string, dto: CompleteProductionDto) {
+  async complete(id: string, dto: CompleteProductionDto, actorUserId?: string) {
     const autoIssue = dto.autoIssue !== false;
     const stockChanges: {
       locationId: string;
       itemId: string;
       previous: number;
     }[] = [];
+    let becameFullyDone = false;
 
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
@@ -535,7 +669,15 @@ export class ProductionService {
       order.status = fullyDone
         ? ProductionOrderStatus.COMPLETED
         : ProductionOrderStatus.IN_PROGRESS;
-      if (fullyDone) order.completedAt = new Date();
+      if (fullyDone) {
+        order.completedAt = new Date();
+        becameFullyDone = true;
+        if (order.inquiryId) {
+          await manager
+            .getRepository(CustomerInquiry)
+            .update({ id: order.inquiryId }, { readyForSaleAt: new Date() });
+        }
+      }
       await orderRepo.save(order);
     });
 
@@ -547,7 +689,27 @@ export class ProductionService {
       );
     }
 
-    return this.findOne(id);
+    const completed = await this.findOne(id);
+    if (becameFullyDone) {
+      let assigneeUserId: string | null = null;
+      if (completed.inquiryId) {
+        const inquiry = await this.inquiryRepo.findOne({
+          where: { id: completed.inquiryId },
+        });
+        assigneeUserId = inquiry?.assignedToUserId ?? null;
+      }
+      await this.notifications.onProductionReadyForSale({
+        productionOrderId: completed.id,
+        orderNumber: completed.orderNumber,
+        finishedItemLabel:
+          completed.finishedItem?.description ?? completed.finishedItemId,
+        quantityCompleted: completed.quantityCompleted,
+        actorUserId: actorUserId ?? null,
+        inquiryId: completed.inquiryId,
+        assigneeUserId,
+      });
+    }
+    return completed;
   }
 
   /** Reverse completed FG and return proportional issued materials. */
@@ -850,6 +1012,34 @@ export class ProductionService {
         `BOM is no longer effective (to ${bom.effectiveTo})`,
       );
     }
+  }
+
+  private async assertInquiryForProduction(inquiryId: string): Promise<string> {
+    const inquiry = await this.inquiryRepo.findOne({
+      where: { id: inquiryId },
+    });
+    if (!inquiry) throw new BadRequestException('Inquiry not found');
+    if (
+      inquiry.status === InquiryStatus.CANCELLED ||
+      inquiry.status === InquiryStatus.CLOSED ||
+      inquiry.status === InquiryStatus.CONVERTED
+    ) {
+      throw new BadRequestException(
+        `Cannot link production to inquiry in status ${inquiry.status}`,
+      );
+    }
+    if (inquiry.assignmentStatus === InquiryAssignmentStatus.PENDING) {
+      throw new BadRequestException(
+        'Accept the inquiry assignment before linking production',
+      );
+    }
+    return inquiry.id;
+  }
+
+  private async assertSaleLink(saleId: string): Promise<string> {
+    const sale = await this.saleRepo.findOne({ where: { id: saleId } });
+    if (!sale) throw new BadRequestException('Sale not found');
+    return sale.id;
   }
 
   private async nextOrderNumber(): Promise<string> {

@@ -47,6 +47,16 @@ export class CreateSaleDto {
   @IsUUID()
   customerId?: string;
 
+  /** Close the MTO loop: sale from this inquiry. */
+  @IsOptional()
+  @IsUUID()
+  inquiryId?: string;
+
+  /** Prefer FG from this completed production order. */
+  @IsOptional()
+  @IsUUID()
+  productionOrderId?: string;
+
   @IsUUID()
   locationId: string;
 

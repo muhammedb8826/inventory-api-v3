@@ -446,6 +446,86 @@ export class NotificationsService {
     );
   }
 
+  /** Warehouse / production: materials reserved — issue stock for the PO. */
+  async onProductionReleased(params: {
+    productionOrderId: string;
+    orderNumber?: string | null;
+    finishedItemLabel: string;
+    quantityPlanned: string;
+    actorUserId?: string | null;
+    inquiryId?: string | null;
+  }) {
+    const label = params.orderNumber
+      ? `PO ${params.orderNumber}`
+      : 'Production order';
+    await this.notifyUsersWithPermission(
+      'production.write',
+      {
+        module: 'production',
+        type: NotificationType.SYSTEM,
+        title: 'Issue materials for production',
+        message: `${label}: issue components for ${params.quantityPlanned} × ${params.finishedItemLabel}`,
+        entityType: 'production_order',
+        entityId: params.productionOrderId,
+        metadata: {
+          event: 'released',
+          orderNumber: params.orderNumber ?? null,
+          inquiryId: params.inquiryId ?? null,
+        },
+      },
+      params.actorUserId ? [params.actorUserId] : [],
+    );
+  }
+
+  /** Sales / inquiry owner: FG received — ready to sell. */
+  async onProductionReadyForSale(params: {
+    productionOrderId: string;
+    orderNumber?: string | null;
+    finishedItemLabel: string;
+    quantityCompleted: string;
+    actorUserId?: string | null;
+    inquiryId?: string | null;
+    assigneeUserId?: string | null;
+  }) {
+    const label = params.orderNumber
+      ? `PO ${params.orderNumber}`
+      : 'Production order';
+    const notice = {
+      module: 'production' as const,
+      type: NotificationType.SYSTEM,
+      title: 'Production complete — ready for sale',
+      message: `${label}: ${params.quantityCompleted} × ${params.finishedItemLabel} ready to sell`,
+      entityType: 'production_order',
+      entityId: params.productionOrderId,
+      metadata: {
+        event: 'ready_for_sale',
+        orderNumber: params.orderNumber ?? null,
+        inquiryId: params.inquiryId ?? null,
+      },
+    };
+
+    await this.notifyUsersWithPermission(
+      'sales.write',
+      notice,
+      params.actorUserId ? [params.actorUserId] : [],
+    );
+    await this.notifyUsersWithPermission(
+      'inquiries.write',
+      notice,
+      params.actorUserId ? [params.actorUserId] : [],
+    );
+
+    if (params.assigneeUserId && params.assigneeUserId !== params.actorUserId) {
+      await this.notifyUsers([params.assigneeUserId], {
+        ...notice,
+        module: 'inquiries',
+        type: NotificationType.INQUIRY,
+        entityType: params.inquiryId ? 'inquiry' : 'production_order',
+        entityId: params.inquiryId ?? params.productionOrderId,
+      });
+    }
+  }
+
   private async findOwned(userId: string, id: string) {
     const notification = await this.repo.findOne({ where: { id, userId } });
     if (!notification) {

@@ -18,6 +18,7 @@ import {
   IssueProductionDto,
   ProductionOrderListQueryDto,
   ScrapProductionDto,
+  StartProductionFromInquiryDto,
   UnbuildProductionDto,
 } from './dto/production-order.dto';
 import { ProductionService } from './production.service';
@@ -31,6 +32,15 @@ export class ProductionController {
   @RequirePermissions('production.read')
   findAll(@Query() query: ProductionOrderListQueryDto) {
     return this.productionService.findAll(query);
+  }
+
+  @Post('from-inquiry')
+  @RequirePermissions('production.write')
+  fromInquiry(
+    @Body() dto: StartProductionFromInquiryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.productionService.createFromInquiry(dto, user.sub);
   }
 
   @Get(':id')
@@ -50,8 +60,8 @@ export class ProductionController {
 
   @Post(':id/release')
   @RequirePermissions('production.write')
-  release(@Param('id') id: string) {
-    return this.productionService.release(id);
+  release(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.productionService.release(id, user.sub);
   }
 
   @Post(':id/issue')
@@ -62,8 +72,12 @@ export class ProductionController {
 
   @Post(':id/complete')
   @RequirePermissions('production.write')
-  complete(@Param('id') id: string, @Body() dto: CompleteProductionDto) {
-    return this.productionService.complete(id, dto);
+  complete(
+    @Param('id') id: string,
+    @Body() dto: CompleteProductionDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.productionService.complete(id, dto, user.sub);
   }
 
   @Post(':id/unbuild')

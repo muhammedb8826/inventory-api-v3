@@ -13,7 +13,9 @@ import {
   CreditStatus,
   DEFAULT_COMMISSION_PERCENT,
   DocumentStatus,
+  InquiryStatus,
   PaymentMethod,
+  ProductionOrderStatus,
   StockMovementType,
 } from '../common/enums';
 import { computeCommissionAmount } from '../common/utils/commission.util';
@@ -27,6 +29,8 @@ import { SalesListQueryDto } from './dto/sales-list-query.dto';
 import { BankLedgerService } from '../banks/bank-ledger.service';
 import { BanksService } from '../banks/banks.service';
 import { CustomerCredit } from '../database/entities/customer-credit.entity';
+import { CustomerInquiry } from '../database/entities/customer-inquiry.entity';
+import { ProductionOrder } from '../database/entities/production-order.entity';
 import { SaleLine } from '../database/entities/sale-line.entity';
 import { Sale } from '../database/entities/sale.entity';
 import { SaleReturn } from '../database/entities/sale-return.entity';
@@ -59,6 +63,10 @@ export class SalesService {
     private readonly saleRepo: Repository<Sale>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(CustomerInquiry)
+    private readonly inquiryRepo: Repository<CustomerInquiry>,
+    @InjectRepository(ProductionOrder)
+    private readonly productionOrderRepo: Repository<ProductionOrder>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly stockService: StockService,
@@ -662,11 +670,12 @@ export class SalesService {
         'bankAccountId required for BANK and CASH payments',
       );
     }
-    if (dto.paymentMethod === PaymentMethod.CREDIT && !dto.customerId) {
+    const stockChanges: StockQuantityChange[] = [];
+    const mtoLinks = await this.resolveMtoLinks(dto);
+    const customerId = dto.customerId ?? mtoLinks.customerId ?? null;
+    if (dto.paymentMethod === PaymentMethod.CREDIT && !customerId) {
       throw new BadRequestException('customerId required for credit sales');
     }
-
-    const stockChanges: StockQuantityChange[] = [];
 
     const result = await this.dataSource.transaction(async (manager) => {
       if (paysViaBank && dto.bankAccountId) {
@@ -679,6 +688,8 @@ export class SalesService {
 
       const saleRepo = manager.getRepository(Sale);
       const creditRepo = manager.getRepository(CustomerCredit);
+      const inquiryRepo = manager.getRepository(CustomerInquiry);
+      const productionOrderRepo = manager.getRepository(ProductionOrder);
 
       const stockWarnings = await this.stockService.checkAvailability(
         dto.locationId,
@@ -721,7 +732,9 @@ export class SalesService {
 
       const sale = await saleRepo.save(
         saleRepo.create({
-          customerId: dto.customerId ?? null,
+          customerId,
+          inquiryId: mtoLinks.inquiryId,
+          productionOrderId: mtoLinks.productionOrderId,
           locationId: dto.locationId,
           paymentMethod: dto.paymentMethod,
           bankAccountId: dto.bankAccountId ?? null,
@@ -739,6 +752,22 @@ export class SalesService {
           lines: saleLines.map((l) => Object.assign(new SaleLine(), l)),
         }),
       );
+
+      if (mtoLinks.inquiryId) {
+        await inquiryRepo.update(
+          { id: mtoLinks.inquiryId },
+          {
+            status: InquiryStatus.CONVERTED,
+            convertedSaleId: sale.id,
+          },
+        );
+      }
+      if (mtoLinks.productionOrderId) {
+        await productionOrderRepo.update(
+          { id: mtoLinks.productionOrderId },
+          { saleId: sale.id },
+        );
+      }
 
       for (const line of dto.lines) {
         const previousQuantity = await this.stockService.getQuantity(
@@ -777,10 +806,10 @@ export class SalesService {
         );
       }
 
-      if (dto.paymentMethod === PaymentMethod.CREDIT && dto.customerId) {
+      if (dto.paymentMethod === PaymentMethod.CREDIT && customerId) {
         await creditRepo.save(
           creditRepo.create({
-            customerId: dto.customerId,
+            customerId,
             saleId: sale.id,
             source: CreditSource.SALE,
             amount: subtotal.toFixed(2),
@@ -816,6 +845,60 @@ export class SalesService {
       ...sale,
       stockWarnings: result.stockWarnings,
     };
+  }
+
+  /**
+   * Resolve optional MTO links (inquiry / completed production) for a sale.
+   */
+  private async resolveMtoLinks(dto: CreateSaleDto): Promise<{
+    inquiryId: string | null;
+    productionOrderId: string | null;
+    customerId: string | null;
+  }> {
+    let inquiryId = dto.inquiryId ?? null;
+    let productionOrderId = dto.productionOrderId ?? null;
+    let customerId: string | null = null;
+
+    if (productionOrderId) {
+      const order = await this.productionOrderRepo.findOne({
+        where: { id: productionOrderId },
+      });
+      if (!order) {
+        throw new BadRequestException('Production order not found');
+      }
+      if (order.status !== ProductionOrderStatus.COMPLETED) {
+        throw new BadRequestException(
+          'Production order must be COMPLETED before linking to a sale',
+        );
+      }
+      if (order.saleId) {
+        throw new BadRequestException(
+          'Production order is already linked to a sale',
+        );
+      }
+      if (!inquiryId && order.inquiryId) inquiryId = order.inquiryId;
+    }
+
+    if (inquiryId) {
+      const inquiry = await this.inquiryRepo.findOne({
+        where: { id: inquiryId },
+      });
+      if (!inquiry) throw new BadRequestException('Inquiry not found');
+      if (inquiry.status === InquiryStatus.CONVERTED) {
+        throw new BadRequestException('Inquiry already converted to a sale');
+      }
+      if (
+        inquiry.status === InquiryStatus.CANCELLED ||
+        inquiry.status === InquiryStatus.CLOSED
+      ) {
+        throw new BadRequestException(
+          `Cannot convert inquiry in status ${inquiry.status}`,
+        );
+      }
+      customerId = inquiry.customerId;
+    }
+
+    return { inquiryId, productionOrderId, customerId };
   }
 
   /**

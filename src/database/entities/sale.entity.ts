@@ -16,7 +16,9 @@ import {
 import { BankAccount } from './bank-account.entity';
 import { Customer } from './customer.entity';
 import { CustomerCredit } from './customer-credit.entity';
+import { CustomerInquiry } from './customer-inquiry.entity';
 import { Location } from './location.entity';
+import { ProductionOrder } from './production-order.entity';
 import { SaleLine } from './sale-line.entity';
 import { User } from './user.entity';
 import { UuidBaseEntity } from './uuid-base.entity';
@@ -25,6 +27,12 @@ import { UuidBaseEntity } from './uuid-base.entity';
 export class Sale extends UuidBaseEntity {
   @Column({ name: 'customer_id', type: 'uuid', nullable: true })
   customerId: string | null;
+
+  @Column({ name: 'inquiry_id', type: 'uuid', nullable: true })
+  inquiryId: string | null;
+
+  @Column({ name: 'production_order_id', type: 'uuid', nullable: true })
+  productionOrderId: string | null;
 
   @Column({ name: 'location_id' })
   locationId: string;
@@ -96,6 +104,14 @@ export class Sale extends UuidBaseEntity {
   @ManyToOne(() => Customer, (customer) => customer.sales)
   @JoinColumn({ name: 'customer_id' })
   customer: Customer | null;
+
+  @ManyToOne(() => CustomerInquiry, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'inquiry_id' })
+  inquiry: CustomerInquiry | null;
+
+  @ManyToOne(() => ProductionOrder, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'production_order_id' })
+  productionOrder: ProductionOrder | null;
 
   @ManyToOne(() => Location)
   @JoinColumn({ name: 'location_id' })

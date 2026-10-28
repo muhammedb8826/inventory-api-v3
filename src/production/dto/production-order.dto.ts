@@ -41,6 +41,53 @@ export class CreateProductionOrderDto {
   @IsBoolean()
   explodeBom?: boolean;
 
+  /** Link to customer inquiry (MTO spine). */
+  @IsOptional()
+  @IsUUID()
+  inquiryId?: string;
+
+  /** Link to an existing sale this production fulfills. */
+  @IsOptional()
+  @IsUUID()
+  saleId?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+/** Create PO from an accepted inquiry (resolves BOM from item if omitted). */
+export class StartProductionFromInquiryDto {
+  @IsUUID()
+  inquiryId: string;
+
+  @IsUUID()
+  locationId: string;
+
+  @IsOptional()
+  @IsUUID()
+  finishedLocationId?: string;
+
+  /** Inquiry line item to produce; defaults to first line. */
+  @IsOptional()
+  @IsUUID()
+  itemId?: string;
+
+  /** Defaults to the item's default active BOM. */
+  @IsOptional()
+  @IsUUID()
+  bomId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantityPlanned?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  explodeBom?: boolean;
+
   @IsOptional()
   @IsString()
   notes?: string;
@@ -111,6 +158,14 @@ export class ProductionOrderListQueryDto extends DateRangeQueryDto {
   @IsOptional()
   @IsUUID()
   bomId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  inquiryId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  saleId?: string;
 
   @IsOptional()
   @IsEnum(ProductionOrderStatus)

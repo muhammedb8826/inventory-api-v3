@@ -89,6 +89,10 @@ export class CustomerInquiry extends UuidBaseEntity {
   @Column({ name: 'converted_sale_id', type: 'uuid', nullable: true })
   convertedSaleId: string | null;
 
+  /** Set when linked production completes — FG ready to sell/deliver. */
+  @Column({ name: 'ready_for_sale_at', type: 'timestamptz', nullable: true })
+  readyForSaleAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
