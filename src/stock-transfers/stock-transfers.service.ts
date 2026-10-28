@@ -38,6 +38,8 @@ export class StockTransfersService {
     const qb = this.transferRepo
       .createQueryBuilder('transfer')
       .leftJoinAndSelect('transfer.fromLocation', 'fromLocation')
+      .leftJoin('transfer.createdBy', 'recordCreator')
+      .addSelect(['recordCreator.id', 'recordCreator.fullName'])
       .leftJoinAndSelect('transfer.toLocation', 'toLocation')
       .leftJoinAndSelect('transfer.lines', 'lines')
       .leftJoinAndSelect('lines.item', 'item')

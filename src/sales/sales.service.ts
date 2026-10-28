@@ -97,6 +97,8 @@ export class SalesService {
           .clone()
           .leftJoinAndSelect('sale.customer', 'customer')
           .leftJoinAndSelect('sale.location', 'location')
+          .leftJoin('sale.createdBy', 'recordCreator')
+          .addSelect(['recordCreator.id', 'recordCreator.fullName'])
           .leftJoinAndSelect('sale.lines', 'lines')
           .leftJoinAndSelect('lines.item', 'item')
           .leftJoinAndSelect('sale.credit', 'credit')

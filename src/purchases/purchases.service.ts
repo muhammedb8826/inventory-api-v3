@@ -59,6 +59,8 @@ export class PurchasesService {
           .clone()
           .leftJoinAndSelect('purchase.supplier', 'supplier')
           .leftJoinAndSelect('purchase.location', 'location')
+          .leftJoin('purchase.createdBy', 'recordCreator')
+          .addSelect(['recordCreator.id', 'recordCreator.fullName'])
           .leftJoinAndSelect('purchase.lines', 'lines')
           .leftJoinAndSelect('lines.item', 'item')
           .leftJoinAndSelect('purchase.credit', 'credit')

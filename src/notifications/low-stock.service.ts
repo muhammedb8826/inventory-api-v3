@@ -173,6 +173,12 @@ export class LowStockService {
 
     return {
       id: stock.id,
+      createdAt: stock.createdAt,
+      updatedAt: stock.updatedAt,
+      reserved: stock.reserved,
+      available: (Number(stock.quantity) - Number(stock.reserved ?? 0)).toFixed(
+        3,
+      ),
       locationId: stock.locationId,
       itemId: stock.itemId,
       quantity: stock.quantity,
@@ -183,6 +189,7 @@ export class LowStockService {
         ? {
             id: stock.item.id,
             sku: stock.item.sku,
+            barcode: stock.item.barcode,
             description: stock.item.description,
             unit: stock.item.unit,
             itemType: stock.item.itemType,

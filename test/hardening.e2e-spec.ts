@@ -414,6 +414,40 @@ describe('Production invariants (isolated PostgreSQL)', () => {
       ),
     ).toBe(true);
   });
+  it('lists document metadata and creators without exposing credential fields', async () => {
+    for (const route of [
+      '/sales',
+      '/purchases',
+      '/expenses',
+      '/stock-transfers',
+      '/inventory/low-stock',
+    ]) {
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1${route}`)
+        .auth(token, { type: 'bearer' })
+        .expect(200);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      for (const row of response.body.data) {
+        expect(row).not.toHaveProperty('passwordHash');
+        if (row.createdBy) {
+          expect(row.createdBy).not.toHaveProperty('passwordHash');
+          expect(row.createdBy).not.toHaveProperty('sessionVersion');
+        }
+        if (route === '/inventory/low-stock') {
+          expect(row).toHaveProperty('createdAt');
+          expect(row).toHaveProperty('updatedAt');
+          expect(row).toHaveProperty('available');
+        }
+      }
+      if (route === '/sales')
+        expect(
+          response.body.data.some(
+            (row: { createdBy?: { fullName?: string } }) =>
+              row.createdBy?.fullName,
+          ),
+        ).toBe(true);
+    }
+  });
   it('revokes rotated refresh tokens and detects reuse', async () => {
     const login = await request(app.getHttpServer())
       .post('/api/v1/auth/login')

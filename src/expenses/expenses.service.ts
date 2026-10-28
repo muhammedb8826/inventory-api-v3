@@ -48,6 +48,8 @@ export class ExpensesService {
         filteredQb
           .clone()
           .leftJoinAndSelect('expense.category', 'category')
+          .leftJoin('expense.createdBy', 'recordCreator')
+          .addSelect(['recordCreator.id', 'recordCreator.fullName'])
           .leftJoinAndSelect('expense.bankAccount', 'bankAccount')
           .orderBy('expense.expense_date', 'DESC'),
         query.page,
