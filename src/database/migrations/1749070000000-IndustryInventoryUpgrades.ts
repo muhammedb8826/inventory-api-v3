@@ -51,9 +51,10 @@ export class IndustryInventoryUpgrades1749070000000 implements MigrationInterfac
       )
     `);
 
+    // App-generated UUIDs (UuidBaseEntity) — no uuid-ossp / gen_random_uuid needed (cPanel).
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "stocktakes" (
-        "id" uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+        "id" uuid NOT NULL,
         "location_id" uuid NOT NULL,
         "status" "stocktakes_status_enum" NOT NULL DEFAULT 'DRAFT',
         "notes" text NULL,
@@ -61,6 +62,7 @@ export class IndustryInventoryUpgrades1749070000000 implements MigrationInterfac
         "completed_at" TIMESTAMPTZ NULL,
         "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
         "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        CONSTRAINT "PK_stocktakes" PRIMARY KEY ("id"),
         CONSTRAINT "FK_stocktakes_location"
           FOREIGN KEY ("location_id") REFERENCES "locations"("id") ON DELETE RESTRICT,
         CONSTRAINT "FK_stocktakes_user"
@@ -70,11 +72,12 @@ export class IndustryInventoryUpgrades1749070000000 implements MigrationInterfac
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "stocktake_lines" (
-        "id" uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+        "id" uuid NOT NULL,
         "stocktake_id" uuid NOT NULL,
         "item_id" uuid NOT NULL,
         "system_qty" numeric(14,3) NOT NULL,
         "counted_qty" numeric(14,3) NULL,
+        CONSTRAINT "PK_stocktake_lines" PRIMARY KEY ("id"),
         CONSTRAINT "FK_stocktake_lines_session"
           FOREIGN KEY ("stocktake_id") REFERENCES "stocktakes"("id") ON DELETE CASCADE,
         CONSTRAINT "FK_stocktake_lines_item"
@@ -84,7 +87,7 @@ export class IndustryInventoryUpgrades1749070000000 implements MigrationInterfac
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "stock_lots" (
-        "id" uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+        "id" uuid NOT NULL,
         "location_id" uuid NOT NULL,
         "item_id" uuid NOT NULL,
         "lot_number" varchar(80) NOT NULL,
@@ -92,6 +95,7 @@ export class IndustryInventoryUpgrades1749070000000 implements MigrationInterfac
         "quantity" numeric(14,3) NOT NULL DEFAULT 0,
         "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
         "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        CONSTRAINT "PK_stock_lots" PRIMARY KEY ("id"),
         CONSTRAINT "UQ_stock_lots_loc_item_lot"
           UNIQUE ("location_id", "item_id", "lot_number"),
         CONSTRAINT "FK_stock_lots_location"
