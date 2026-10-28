@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsNumber,
@@ -43,6 +44,7 @@ export class CreateStockTransferDto {
 
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayUnique((line: StockTransferLineDto) => line.itemId)
   @ValidateNested({ each: true })
   @Type(() => StockTransferLineDto)
   lines: StockTransferLineDto[];

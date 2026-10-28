@@ -44,7 +44,8 @@ export class LocationsService {
 
     if (userId) {
       const allowed = await this.locationAccess.getAllowedLocationIds(userId);
-      if (allowed) {
+      if (allowed?.length === 0) qb.andWhere('1 = 0');
+      else if (allowed) {
         // Access to a warehouse/showroom includes its bins.
         qb.andWhere(
           '(location.id IN (:...allowed) OR location.parent_id IN (:...allowed))',

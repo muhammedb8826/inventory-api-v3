@@ -17,6 +17,9 @@ export class IdempotencyKey extends UuidBaseEntity {
   @Column({ type: 'varchar', length: 200 })
   route: string;
 
+  @Column({ name: 'request_hash', type: 'varchar', length: 64, nullable: true })
+  requestHash: string | null;
+
   @Column({ name: 'status_code', type: 'int' })
   statusCode: number;
 

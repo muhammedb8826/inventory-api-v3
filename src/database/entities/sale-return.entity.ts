@@ -32,6 +32,27 @@ export class SaleReturn extends UuidBaseEntity {
   })
   status: DocumentStatus;
 
+  @Column({
+    name: 'refund_amount',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+  })
+  refundAmount: string;
+
+  @Column({
+    name: 'credit_amount',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+  })
+  creditAmount: string;
+
+  @Column({ name: 'bank_account_id', type: 'uuid', nullable: true })
+  bankAccountId: string | null;
+
   @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
   createdById: string | null;
 

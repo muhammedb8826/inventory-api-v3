@@ -1,4 +1,9 @@
 import {
+  moneyAdd,
+  moneyMultiply,
+  moneySubtract,
+} from '../common/utils/money.util';
+import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -298,51 +303,63 @@ export class SalesService {
     canOnBehalf = false,
   ) {
     if (this.isMetadataOnlyUpdate(dto)) {
-      const sale = await this.findOne(id);
-      if (sale.status === DocumentStatus.VOIDED) {
-        throw new BadRequestException('Cannot update a voided sale');
-      }
-      if (sale.credit) {
-        const paid = parseFloat(sale.credit.paidAmount);
-        if (paid > 0) {
-          const keys = (Object.keys(dto) as (keyof UpdateSaleDto)[]).filter(
-            (k) => dto[k] !== undefined,
-          );
-          if (keys.some((k) => k !== 'notes')) {
-            throw new BadRequestException(
-              'Cannot change sale after customer credit payments; only notes may be updated',
+      await this.dataSource.transaction(async (manager) => {
+        const repository = manager.getRepository(Sale);
+        await repository
+          .createQueryBuilder('sale')
+          .where('sale.id = :id', { id })
+          .setLock('pessimistic_write')
+          .getOne();
+        const sale = await repository.findOne({
+          where: { id },
+          relations: { lines: true, credit: true },
+        });
+        if (!sale) throw new NotFoundException('Sale not found');
+        if (sale.status === DocumentStatus.VOIDED) {
+          throw new BadRequestException('Cannot update a voided sale');
+        }
+        if (sale.credit) {
+          const paid = parseFloat(sale.credit.paidAmount);
+          if (paid > 0) {
+            const keys = (Object.keys(dto) as (keyof UpdateSaleDto)[]).filter(
+              (k) => dto[k] !== undefined,
             );
+            if (keys.some((k) => k !== 'notes')) {
+              throw new BadRequestException(
+                'Cannot change sale after customer credit payments; only notes may be updated',
+              );
+            }
           }
         }
-      }
 
-      if (dto.notes !== undefined) {
-        sale.notes = dto.notes ?? null;
-      }
+        if (dto.notes !== undefined) {
+          sale.notes = dto.notes ?? null;
+        }
 
-      const subtotal = parseFloat(sale.subtotal);
-      if (
-        dto.soldByUserId !== undefined ||
-        dto.commissionPercent !== undefined ||
-        dto.commissionBasis !== undefined
-      ) {
-        sale.soldByUserId = await this.resolveSoldByUserId(
-          dto.soldByUserId ?? sale.soldByUserId ?? undefined,
-          userId,
-          canOnBehalf,
-        );
-        const commission = this.commissionFields(subtotal, sale.lines, {
-          commissionPercent: dto.commissionPercent,
-          existingPercent: sale.commissionPercent,
-          commissionBasis: dto.commissionBasis,
-          existingBasis: sale.commissionBasis,
-        });
-        sale.commissionPercent = commission.commissionPercent;
-        sale.commissionBasis = commission.commissionBasis;
-        sale.commissionAmount = commission.commissionAmount;
-      }
+        const subtotal = parseFloat(sale.subtotal);
+        if (
+          dto.soldByUserId !== undefined ||
+          dto.commissionPercent !== undefined ||
+          dto.commissionBasis !== undefined
+        ) {
+          sale.soldByUserId = await this.resolveSoldByUserId(
+            dto.soldByUserId ?? sale.soldByUserId ?? undefined,
+            userId,
+            canOnBehalf,
+          );
+          const commission = this.commissionFields(subtotal, sale.lines, {
+            commissionPercent: dto.commissionPercent,
+            existingPercent: sale.commissionPercent,
+            commissionBasis: dto.commissionBasis,
+            existingBasis: sale.commissionBasis,
+          });
+          sale.commissionPercent = commission.commissionPercent;
+          sale.commissionBasis = commission.commissionBasis;
+          sale.commissionAmount = commission.commissionAmount;
+        }
 
-      await this.saleRepo.save(sale);
+        await repository.save(sale);
+      });
       return this.findOne(id);
     }
 
@@ -370,11 +387,25 @@ export class SalesService {
       const lineRepo = manager.getRepository(SaleLine);
       const creditRepo = manager.getRepository(CustomerCredit);
 
+      await saleRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const sale = await saleRepo.findOne({
         where: { id },
         relations: { lines: true, credit: true },
       });
       if (!sale) throw new NotFoundException('Sale not found');
+      if (
+        await manager
+          .getRepository(SaleReturn)
+          .existsBy({ saleId: id, status: DocumentStatus.ACTIVE })
+      ) {
+        throw new BadRequestException(
+          'Sales with returns cannot be edited or voided',
+        );
+      }
       if (sale.status === DocumentStatus.VOIDED) {
         throw new BadRequestException('Cannot update a voided sale');
       }
@@ -422,7 +453,8 @@ export class SalesService {
       }
 
       const subtotal = lines.reduce(
-        (sum, l) => sum + l.quantity * l.unitPrice,
+        (sum, l) =>
+          Number(moneyAdd(sum, moneyMultiply(l.quantity, l.unitPrice))),
         0,
       );
 
@@ -479,7 +511,7 @@ export class SalesService {
           manager,
         );
         const purchaseCost = stock ? parseFloat(stock.purchasePrice) : 0;
-        const lineTotal = line.quantity * line.unitPrice;
+        const lineTotal = Number(moneyMultiply(line.quantity, line.unitPrice));
         saleLines.push({
           itemId: line.itemId,
           quantity: line.quantity.toFixed(3),
@@ -591,11 +623,25 @@ export class SalesService {
       const saleRepo = manager.getRepository(Sale);
       const creditRepo = manager.getRepository(CustomerCredit);
 
+      await saleRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const sale = await saleRepo.findOne({
         where: { id },
         relations: { lines: true, credit: true },
       });
       if (!sale) throw new NotFoundException('Sale not found');
+      if (
+        await manager
+          .getRepository(SaleReturn)
+          .existsBy({ saleId: id, status: DocumentStatus.ACTIVE })
+      ) {
+        throw new BadRequestException(
+          'Sales with returns cannot be edited or voided',
+        );
+      }
       if (sale.status === DocumentStatus.VOIDED) {
         throw new BadRequestException('Sale already voided');
       }
@@ -708,8 +754,8 @@ export class SalesService {
           manager,
         );
         const purchaseCost = stock ? parseFloat(stock.purchasePrice) : 0;
-        const lineTotal = line.quantity * line.unitPrice;
-        subtotal += lineTotal;
+        const lineTotal = Number(moneyMultiply(line.quantity, line.unitPrice));
+        subtotal = Number(moneyAdd(subtotal, lineTotal));
         saleLines.push({
           itemId: line.itemId,
           quantity: line.quantity.toFixed(3),
@@ -856,7 +902,7 @@ export class SalesService {
     customerId: string | null;
   }> {
     let inquiryId = dto.inquiryId ?? null;
-    let productionOrderId = dto.productionOrderId ?? null;
+    const productionOrderId = dto.productionOrderId ?? null;
     let customerId: string | null = null;
 
     if (productionOrderId) {
@@ -948,111 +994,207 @@ export class SalesService {
     );
   }
 
-  /**
-   * Partial/full RMA against an active sale — restocks inventory with SALE_RETURN ledger.
-   * Does not reverse bank/credit (finance follow-up); stock + audit trail only.
-   */
+  /** A return posts stock, customer credit reduction and any cash refund atomically. */
   async createReturn(
     saleId: string,
     dto: {
       lines: { saleLineId: string; quantity: number }[];
       notes?: string;
+      bankAccountId?: string;
     },
     userId?: string,
   ) {
-    const sale = await this.saleRepo.findOne({
-      where: { id: saleId },
-      relations: { lines: true },
-    });
-    if (!sale) throw new NotFoundException('Sale not found');
-    if (sale.status === DocumentStatus.VOIDED) {
-      throw new BadRequestException('Cannot return a voided sale');
-    }
-
-    const priorReturns = await this.dataSource.getRepository(SaleReturn).find({
-      where: { saleId, status: DocumentStatus.ACTIVE },
-      relations: { lines: true },
-    });
-    const returnedByLine = new Map<string, number>();
-    for (const ret of priorReturns) {
-      for (const line of ret.lines ?? []) {
-        if (!line.saleLineId) continue;
-        returnedByLine.set(
-          line.saleLineId,
-          (returnedByLine.get(line.saleLineId) ?? 0) +
-            parseFloat(line.quantity),
-        );
-      }
-    }
-
     const returnId = await this.dataSource.transaction(async (manager) => {
-      const returnRepo = manager.getRepository(SaleReturn);
-      const returnLines: SaleReturnLine[] = [];
-
-      for (const reqLine of dto.lines) {
-        const saleLine = sale.lines.find((l) => l.id === reqLine.saleLineId);
-        if (!saleLine) {
-          throw new BadRequestException(
-            `Sale line ${reqLine.saleLineId} not found on this sale`,
-          );
+      const saleRepo = manager.getRepository(Sale);
+      await saleRepo
+        .createQueryBuilder('sale')
+        .where('sale.id = :saleId', { saleId })
+        .setLock('pessimistic_write')
+        .getOne();
+      const sale = await saleRepo.findOne({
+        where: { id: saleId },
+        relations: { lines: true },
+      });
+      if (!sale) throw new NotFoundException('Sale not found');
+      if (sale.status === DocumentStatus.VOIDED)
+        throw new BadRequestException('Cannot return a voided sale');
+      const prior = await manager.getRepository(SaleReturn).find({
+        where: { saleId, status: DocumentStatus.ACTIVE },
+        relations: { lines: true },
+      });
+      const quantities = new Map<string, number>();
+      for (const ret of prior)
+        for (const line of ret.lines) {
+          if (line.saleLineId)
+            quantities.set(
+              line.saleLineId,
+              (quantities.get(line.saleLineId) ?? 0) + Number(line.quantity),
+            );
         }
-        const already = returnedByLine.get(saleLine.id) ?? 0;
-        const soldQty = parseFloat(saleLine.quantity);
-        if (already + reqLine.quantity > soldQty + 1e-9) {
-          throw new BadRequestException(
-            `Return qty exceeds remaining for line ${saleLine.id}. Sold ${soldQty}, already returned ${already}, requested ${reqLine.quantity}`,
-          );
-        }
-
-        returnLines.push(
-          Object.assign(new SaleReturnLine(), {
-            saleLineId: saleLine.id,
-            itemId: saleLine.itemId,
-            quantity: reqLine.quantity.toFixed(3),
-            unitPrice: saleLine.unitPrice,
-          }),
+      const seen = new Set<string>();
+      let total = '0.00';
+      const lines = dto.lines.map((request) => {
+        if (seen.has(request.saleLineId))
+          throw new BadRequestException('Duplicate return line');
+        seen.add(request.saleLineId);
+        const original = sale.lines.find(
+          (line) => line.id === request.saleLineId,
         );
+        if (
+          !original ||
+          !Number.isFinite(request.quantity) ||
+          request.quantity <= 0
+        )
+          throw new BadRequestException('Invalid return line');
+        if (
+          (quantities.get(original.id) ?? 0) + request.quantity >
+          Number(original.quantity) + 0.000001
+        )
+          throw new BadRequestException('Return exceeds remaining quantity');
+        total = moneyAdd(
+          total,
+          moneyMultiply(request.quantity, original.unitPrice),
+        );
+        return Object.assign(new SaleReturnLine(), {
+          saleLineId: original.id,
+          itemId: original.itemId,
+          quantity: request.quantity.toFixed(3),
+          unitPrice: original.unitPrice,
+        });
+      });
+      if (!lines.length)
+        throw new BadRequestException('At least one return line is required');
+      const creditRepo = manager.getRepository(CustomerCredit);
+      const credit = await creditRepo.findOne({
+        where: { saleId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const creditAmount = credit
+        ? Math.min(Number(credit.balance), Number(total)).toFixed(2)
+        : '0.00';
+      const refundAmount = moneySubtract(total, creditAmount);
+      const bankAccountId = dto.bankAccountId ?? sale.bankAccountId;
+      if (Number(refundAmount) > 0 && !bankAccountId)
+        throw new BadRequestException(
+          'Select a refund bank/cash account for the paid portion',
+        );
+      if (credit) {
+        credit.amount = moneySubtract(credit.amount, total);
+        credit.paidAmount = moneySubtract(credit.paidAmount, refundAmount);
+        credit.balance = moneySubtract(credit.balance, creditAmount);
+        credit.status =
+          Number(credit.balance) === 0
+            ? CreditStatus.PAID
+            : Number(credit.paidAmount) > 0
+              ? CreditStatus.PARTIAL
+              : CreditStatus.OPEN;
+        await creditRepo.save(credit);
       }
-
-      const saved = await returnRepo.save(
-        returnRepo.create({
+      const saved = await manager.getRepository(SaleReturn).save(
+        manager.getRepository(SaleReturn).create({
           saleId,
           locationId: sale.locationId,
           notes: dto.notes ?? null,
           status: DocumentStatus.ACTIVE,
           createdById: userId ?? null,
-          lines: returnLines,
+          refundAmount,
+          creditAmount,
+          bankAccountId: bankAccountId ?? null,
+          lines,
         }),
       );
-
-      for (const line of saved.lines) {
-        await this.stockService.adjust(
+      if (Number(refundAmount) > 0)
+        await this.bankLedger.recordTransaction(
           {
-            locationId: sale.locationId,
-            itemId: line.itemId,
-            quantityDelta: parseFloat(line.quantity),
-            movement: {
-              type: StockMovementType.SALE_RETURN,
-              refType: 'sale_return',
-              refId: saved.id,
-              createdById: userId ?? null,
-              notes: dto.notes ?? 'Customer return',
-            },
+            bankAccountId: bankAccountId!,
+            amount: Number(refundAmount),
+            direction: 'out',
+            type: BankTransactionType.ADJUSTMENT,
+            refType: 'sale_return_refund',
+            refId: saved.id,
+            description: `Refund for sale ${saleId}`,
+            createdById: userId,
           },
           manager,
         );
+      const returnedByItem = new Map<string, number>();
+      for (const earlier of prior)
+        for (const line of earlier.lines)
+          returnedByItem.set(
+            line.itemId,
+            (returnedByItem.get(line.itemId) ?? 0) + Number(line.quantity),
+          );
+      for (const line of saved.lines) {
+        const originalLots: {
+          quantity: string;
+          lot_number: string;
+          expiry_date: string | null;
+        }[] = await manager.query(
+          `
+          SELECT a.quantity,l.lot_number,l.expiry_date FROM stock_movement_lots a
+          JOIN stock_movements m ON m.id=a.movement_id JOIN stock_lots l ON l.id=a.lot_id
+          WHERE m.ref_type='sale' AND m.ref_id=$1 AND m.item_id=$2 AND m.type='SALE'
+          ORDER BY l.expiry_date ASC NULLS LAST,l.lot_number,a.id`,
+          [saleId, line.itemId],
+        );
+        let skip = returnedByItem.get(line.itemId) ?? 0;
+        let remaining = Number(line.quantity);
+        const allocations: {
+          quantity: number;
+          lotNumber?: string;
+          expiryDate?: string | null;
+        }[] = [];
+        for (const lot of originalLots) {
+          const available = Number(lot.quantity);
+          if (skip >= available) {
+            skip -= available;
+            continue;
+          }
+          const quantity = Math.min(remaining, available - skip);
+          skip = 0;
+          if (quantity > 0)
+            allocations.push({
+              quantity,
+              lotNumber: lot.lot_number,
+              expiryDate: lot.expiry_date,
+            });
+          remaining -= quantity;
+          if (remaining <= 0.000001) break;
+        }
+        // Historical/untracked receipts remain untracked; never invent batch identifiers.
+        if (remaining > 0.000001) allocations.push({ quantity: remaining });
+        for (const allocation of allocations)
+          await this.stockService.adjust(
+            {
+              locationId: sale.locationId,
+              itemId: line.itemId,
+              quantityDelta: allocation.quantity,
+              lotNumber: allocation.lotNumber,
+              expiryDate: allocation.expiryDate,
+              purchasePrice: Number(
+                sale.lines.find((original) => original.id === line.saleLineId)!
+                  .purchaseCost,
+              ),
+              movement: {
+                type: StockMovementType.SALE_RETURN,
+                refType: 'sale_return',
+                refId: saved.id,
+                createdById: userId ?? null,
+                notes: dto.notes ?? 'Customer return',
+              },
+            },
+            manager,
+          );
+        returnedByItem.set(
+          line.itemId,
+          (returnedByItem.get(line.itemId) ?? 0) + Number(line.quantity),
+        );
       }
-
       return saved.id;
     });
-
     return this.dataSource.getRepository(SaleReturn).findOne({
       where: { id: returnId },
-      relations: {
-        lines: { item: true },
-        sale: true,
-        location: true,
-      },
+      relations: { lines: { item: true }, sale: true, location: true },
     });
   }
 }

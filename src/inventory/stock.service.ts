@@ -1,11 +1,8 @@
+import { randomUUID } from 'crypto';
+import { applyLocationScope } from '../common/location-scope';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import {
-  DataSource,
-  EntityManager,
-  QueryFailedError,
-  Repository,
-} from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { StockMovementType } from '../common/enums';
 import { Item } from '../database/entities/item.entity';
 import { StockLevel } from '../database/entities/stock-level.entity';
@@ -58,14 +55,6 @@ export class StockService {
         : this.movementRepo,
       lot: manager ? manager.getRepository(StockLot) : this.lotRepo,
     };
-  }
-
-  private isUniqueViolation(err: unknown): boolean {
-    return (
-      err instanceof QueryFailedError &&
-      typeof (err as QueryFailedError & { code?: string }).code === 'string' &&
-      (err as QueryFailedError & { code?: string }).code === '23505'
-    );
   }
 
   /**
@@ -188,19 +177,19 @@ export class StockService {
     });
     if (row) return row;
 
-    try {
-      await stock.save(
-        stock.create({
-          locationId,
-          itemId,
-          quantity: '0',
-          reserved: '0',
-          purchasePrice: String(initialPurchasePrice),
-        }),
-      );
-    } catch (err) {
-      if (!this.isUniqueViolation(err)) throw err;
-    }
+    await stock
+      .createQueryBuilder()
+      .insert()
+      .values({
+        id: randomUUID(),
+        locationId,
+        itemId,
+        quantity: '0',
+        reserved: '0',
+        purchasePrice: String(initialPurchasePrice),
+      })
+      .orIgnore()
+      .execute();
 
     row = await this.getStock(locationId, itemId, manager, {
       forUpdate: true,
@@ -259,7 +248,7 @@ export class StockService {
       type: StockMovementType.ADJUSTMENT,
     };
 
-    await movement.save(
+    const ledger = await movement.save(
       movement.create({
         locationId: adj.locationId,
         itemId: adj.itemId,
@@ -277,6 +266,12 @@ export class StockService {
       }),
     );
 
+    for (const allocation of lotMeta.allocations ?? []) {
+      await manager.query(
+        'INSERT INTO stock_movement_lots (movement_id, lot_id, quantity) VALUES ($1, $2, $3)',
+        [ledger.id, allocation.lotId, allocation.quantity],
+      );
+    }
     return saved;
   }
 
@@ -287,7 +282,11 @@ export class StockService {
   private async applyLotDelta(
     adj: StockAdjustment,
     manager: EntityManager,
-  ): Promise<{ lotId: string | null; lotNumber: string | null }> {
+  ): Promise<{
+    lotId: string | null;
+    lotNumber: string | null;
+    allocations?: { lotId: string; quantity: string }[];
+  }> {
     const { lot } = this.repos(manager);
     const qty = adj.quantityDelta;
     if (qty === 0) return { lotId: null, lotNumber: null };
@@ -318,7 +317,11 @@ export class StockService {
         row.expiryDate = adj.expiryDate;
       }
       const saved = await lot.save(row);
-      return { lotId: saved.id, lotNumber: saved.lotNumber };
+      return {
+        lotId: saved.id,
+        lotNumber: saved.lotNumber,
+        allocations: [{ lotId: saved.id, quantity: qty.toFixed(3) }],
+      };
     }
 
     // Issue: explicit lot or FEFO across existing lots
@@ -339,7 +342,11 @@ export class StockService {
       }
       row.quantity = (parseFloat(row.quantity) - need).toFixed(3);
       await lot.save(row);
-      return { lotId: row.id, lotNumber: row.lotNumber };
+      return {
+        lotId: row.id,
+        lotNumber: row.lotNumber,
+        allocations: [{ lotId: row.id, quantity: need.toFixed(3) }],
+      };
     }
 
     const lots = await lot
@@ -355,6 +362,7 @@ export class StockService {
       return { lotId: null, lotNumber: null };
     }
 
+    const allocations: { lotId: string; quantity: string }[] = [];
     let remaining = need;
     let firstLotId: string | null = null;
     let firstLotNumber: string | null = null;
@@ -368,6 +376,7 @@ export class StockService {
         firstLotId = row.id;
         firstLotNumber = row.lotNumber;
       }
+      allocations.push({ lotId: row.id, quantity: take.toFixed(3) });
       remaining -= take;
     }
     if (remaining > 1e-9) {
@@ -375,7 +384,7 @@ export class StockService {
         `Insufficient lot qty for item. Short by ${remaining.toFixed(3)}`,
       );
     }
-    return { lotId: firstLotId, lotNumber: firstLotNumber };
+    return { lotId: firstLotId, lotNumber: firstLotNumber, allocations };
   }
 
   async listLots(filters: {
@@ -405,7 +414,7 @@ export class StockService {
         },
       );
     }
-    return qb.getMany();
+    return applyLocationScope(qb).getMany();
   }
 
   /**
@@ -513,22 +522,48 @@ export class StockService {
         ),
       );
     }
-    await this.adjust(
-      {
-        locationId,
-        itemId,
-        quantityDelta: quantity,
-        purchasePrice,
-        movement: {
-          type: StockMovementType.TRANSFER_IN,
-          refType: meta?.refType ?? 'stock_transfer',
-          refId: meta?.refId ?? null,
-          createdById: meta?.createdById ?? null,
-          notes: meta?.notes ?? null,
+    const allocations: {
+      lot_number: string;
+      expiry_date: string | null;
+      quantity: string;
+    }[] = meta?.refId
+      ? await manager.query(
+          `SELECT l.lot_number, l.expiry_date, a.quantity FROM stock_movement_lots a
+          JOIN stock_movements m ON m.id = a.movement_id JOIN stock_lots l ON l.id = a.lot_id
+          WHERE m.ref_id = $1 AND m.item_id = $2 AND m.type = 'TRANSFER_OUT'
+          AND m.ref_type = $3 ORDER BY m.created_at, a.id`,
+          [meta.refId, itemId, meta.refType ?? 'stock_transfer'],
+        )
+      : [];
+    const received = allocations.length
+      ? allocations
+      : [
+          {
+            lot_number: undefined,
+            expiry_date: undefined,
+            quantity: String(quantity),
+          },
+        ];
+    for (const allocation of received) {
+      await this.adjust(
+        {
+          locationId,
+          itemId,
+          quantityDelta: Number(allocation.quantity),
+          purchasePrice,
+          lotNumber: allocation.lot_number,
+          expiryDate: allocation.expiry_date,
+          movement: {
+            type: StockMovementType.TRANSFER_IN,
+            refType: meta?.refType ?? 'stock_transfer',
+            refId: meta?.refId ?? null,
+            createdById: meta?.createdById ?? null,
+            notes: meta?.notes ?? null,
+          },
         },
-      },
-      manager,
-    );
+        manager,
+      );
+    }
   }
 
   /** One-shot transfer (ship + receive). Prefer multi-step for warehouse workflows. */
@@ -551,6 +586,7 @@ export class StockService {
       );
     }
 
+    meta = { ...meta, refId: meta?.refId ?? randomUUID() };
     if (quantity <= 0) {
       throw new BadRequestException('Quantity must be positive');
     }

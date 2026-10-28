@@ -104,6 +104,28 @@ export class ReportsService {
     return qb;
   }
 
+  private async returnTotals(query: ReportQueryDto) {
+    const [row] = await this.saleRepo.manager.query(
+      `SELECT COALESCE(SUM(round(rl.quantity * rl.unit_price, 2)),0) AS revenue,
+      COALESCE(SUM(round(rl.quantity * COALESCE(sl.purchase_cost,0),2)),0) AS cost
+      FROM sale_returns r JOIN sale_return_lines rl ON rl.return_id = r.id
+      JOIN sales s ON s.id = r.sale_id LEFT JOIN sale_lines sl ON sl.id = rl.sale_line_id
+      WHERE r.status = 'ACTIVE' AND ($1::date IS NULL OR r.created_at >= $1::date)
+      AND ($2::date IS NULL OR r.created_at < $2::date + interval '1 day')
+      AND ($3::uuid IS NULL OR r.location_id = $3::uuid)
+      AND ($4::uuid IS NULL OR s.customer_id = $4::uuid)
+      AND ($5::uuid IS NULL OR s.sold_by_user_id = $5::uuid)`,
+      [
+        query.from ?? null,
+        query.to ?? null,
+        query.locationId ?? null,
+        query.customerId ?? null,
+        query.soldByUserId ?? null,
+      ],
+    );
+    return row as { revenue: string; cost: string };
+  }
+
   async summary(query: ReportQueryDto) {
     const saleTotals = await this.saleBaseQb(query)
       .select('COALESCE(SUM(sale.total::numeric), 0)', 'total')
@@ -120,15 +142,32 @@ export class ReportsService {
       .addSelect('COUNT(expense.id)', 'count')
       .getRawOne<{ total: string; count: string }>();
 
-    const totalRevenue = parseFloat(saleTotals?.total ?? '0');
+    const returns = await this.returnTotals(query);
+    const totalRevenue =
+      parseFloat(saleTotals?.total ?? '0') - Number(returns.revenue);
+    const costQb = this.saleLineRepo
+      .createQueryBuilder('line')
+      .innerJoin('line.sale', 'sale')
+      .where(
+        `sale.id IN (${this.saleBaseQb(query).select('sale.id').getQuery()})`,
+      )
+      .setParameters(this.saleBaseQb(query).getParameters())
+      .select(
+        'COALESCE(SUM(round(line.quantity * line.purchase_cost,2)),0)',
+        'cost',
+      );
+    const cost = await costQb.getRawOne<{ cost: string }>();
+    const costOfGoodsSold = Number(cost?.cost ?? 0) - Number(returns.cost);
     const totalPurchases = parseFloat(purchaseTotals?.total ?? '0');
     const totalExpenses = parseFloat(expenseTotals?.total ?? '0');
-    const grossProfit = totalRevenue - totalPurchases;
+    const grossProfit = totalRevenue - costOfGoodsSold;
     const netProfit = grossProfit - totalExpenses;
 
     return {
       currency: this.currency(),
       totalRevenue: totalRevenue.toFixed(2),
+      returns: returns.revenue,
+      costOfGoodsSold: costOfGoodsSold.toFixed(2),
       totalPurchases: totalPurchases.toFixed(2),
       totalExpenses: totalExpenses.toFixed(2),
       grossProfit: grossProfit.toFixed(2),
@@ -147,6 +186,7 @@ export class ReportsService {
   }
 
   async sales(query: ReportQueryDto) {
+    const returns = await this.returnTotals(query);
     const totals = await this.saleBaseQb(query)
       .select('COALESCE(SUM(sale.subtotal::numeric), 0)', 'subtotal')
       .addSelect('COALESCE(SUM(sale.total::numeric), 0)', 'total')
@@ -193,6 +233,10 @@ export class ReportsService {
         count: parseInt(totals?.count ?? '0', 10),
         subtotal: parseFloat(totals?.subtotal ?? '0').toFixed(2),
         total: parseFloat(totals?.total ?? '0').toFixed(2),
+        returnedAmount: returns.revenue,
+        netTotal: (
+          Number(totals?.total ?? 0) - Number(returns.revenue)
+        ).toFixed(2),
         commission: parseFloat(totals?.commission ?? '0').toFixed(2),
       },
       byPaymentMethod: byPaymentMethod.map((row) => ({

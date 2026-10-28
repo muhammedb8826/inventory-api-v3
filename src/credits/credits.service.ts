@@ -1,3 +1,4 @@
+import { moneyAdd, moneySubtract } from '../common/utils/money.util';
 import {
   BadRequestException,
   Injectable,
@@ -177,7 +178,10 @@ export class CreditsService {
 
     return this.dataSource.transaction(async (manager) => {
       const creditRepo = manager.getRepository(CustomerCredit);
-      const credit = await creditRepo.findOne({ where: { id } });
+      const credit = await creditRepo.findOne({
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!credit) throw new NotFoundException('Customer credit not found');
 
       const balance = parseFloat(credit.balance);
@@ -199,14 +203,14 @@ export class CreditsService {
         manager,
       );
 
-      const paid = parseFloat(credit.paidAmount) + dto.amount;
-      const newBalance = parseFloat(credit.amount) - paid;
-      credit.paidAmount = paid.toFixed(2);
+      const paid = moneyAdd(credit.paidAmount, dto.amount);
+      const newBalance = Number(moneySubtract(credit.amount, paid));
+      credit.paidAmount = paid;
       credit.balance = Math.max(0, newBalance).toFixed(2);
       credit.status =
         newBalance <= 0
           ? CreditStatus.PAID
-          : paid > 0
+          : Number(paid) > 0
             ? CreditStatus.PARTIAL
             : CreditStatus.OPEN;
 
@@ -221,7 +225,10 @@ export class CreditsService {
 
     return this.dataSource.transaction(async (manager) => {
       const creditRepo = manager.getRepository(SupplierCredit);
-      const credit = await creditRepo.findOne({ where: { id } });
+      const credit = await creditRepo.findOne({
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!credit) throw new NotFoundException('Supplier credit not found');
 
       const balance = parseFloat(credit.balance);
@@ -243,14 +250,14 @@ export class CreditsService {
         manager,
       );
 
-      const paid = parseFloat(credit.paidAmount) + dto.amount;
-      const newBalance = parseFloat(credit.amount) - paid;
-      credit.paidAmount = paid.toFixed(2);
+      const paid = moneyAdd(credit.paidAmount, dto.amount);
+      const newBalance = Number(moneySubtract(credit.amount, paid));
+      credit.paidAmount = paid;
       credit.balance = Math.max(0, newBalance).toFixed(2);
       credit.status =
         newBalance <= 0
           ? CreditStatus.PAID
-          : paid > 0
+          : Number(paid) > 0
             ? CreditStatus.PARTIAL
             : CreditStatus.OPEN;
 

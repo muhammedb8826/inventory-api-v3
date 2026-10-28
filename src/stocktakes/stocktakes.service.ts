@@ -42,6 +42,7 @@ export class StocktakesService {
       .leftJoinAndSelect('s.location', 'location')
       .leftJoinAndSelect('s.createdBy', 'createdBy')
       .orderBy('s.createdAt', 'DESC');
+    if (allowed?.length === 0) return [];
     if (allowed) {
       qb.andWhere('s.location_id IN (:...allowed)', { allowed });
     }
@@ -106,26 +107,34 @@ export class StocktakesService {
     dto: SubmitStocktakeCountsDto,
     userId: string,
   ) {
-    const session = await this.findOne(id, userId);
-    if (
-      session.status !== StocktakeStatus.IN_PROGRESS &&
-      session.status !== StocktakeStatus.DRAFT
-    ) {
-      throw new BadRequestException('Stocktake is not open for counting');
-    }
-
-    const byItem = new Map(dto.lines.map((l) => [l.itemId, l.countedQty]));
-    for (const line of session.lines ?? []) {
-      if (byItem.has(line.itemId)) {
-        line.countedQty = byItem.get(line.itemId)!.toFixed(3);
-      }
-    }
-    await this.stocktakeRepo.manager
-      .getRepository(StocktakeLine)
-      .save(session.lines ?? []);
-
-    session.status = StocktakeStatus.IN_PROGRESS;
-    await this.stocktakeRepo.save(session);
+    await this.findOne(id, userId);
+    await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(Stocktake);
+      await repo
+        .createQueryBuilder('session')
+        .where('session.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
+      const session = await repo.findOneOrFail({
+        where: { id },
+        relations: { lines: true },
+      });
+      if (
+        ![StocktakeStatus.IN_PROGRESS, StocktakeStatus.DRAFT].includes(
+          session.status,
+        )
+      )
+        throw new BadRequestException('Stocktake is not open for counting');
+      const byItem = new Map(
+        dto.lines.map((line) => [line.itemId, line.countedQty]),
+      );
+      for (const line of session.lines)
+        if (byItem.has(line.itemId))
+          line.countedQty = byItem.get(line.itemId)!.toFixed(3);
+      await manager.getRepository(StocktakeLine).save(session.lines);
+      session.status = StocktakeStatus.IN_PROGRESS;
+      await repo.save(session);
+    });
     return this.findOne(id, userId);
   }
 
@@ -147,10 +156,40 @@ export class StocktakesService {
     }
 
     await this.dataSource.transaction(async (manager) => {
+      const locked = await manager
+        .getRepository(Stocktake)
+        .createQueryBuilder('session')
+        .where('session.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (
+        !locked ||
+        [StocktakeStatus.COMPLETED, StocktakeStatus.CANCELLED].includes(
+          locked.status,
+        )
+      ) {
+        throw new BadRequestException('Stocktake is no longer open');
+      }
+      const latest = await manager
+        .getRepository(Stocktake)
+        .findOneOrFail({ where: { id }, relations: { lines: true } });
+      session.lines = latest.lines;
+      if (session.lines.some((line) => line.countedQty == null))
+        throw new BadRequestException('Some counts are missing');
       const adjRepo = manager.getRepository(StockAdjustment);
       for (const line of session.lines ?? []) {
         const system = parseFloat(line.systemQty);
         const counted = parseFloat(line.countedQty!);
+        const current = await this.stockService.getQuantity(
+          session.locationId,
+          line.itemId,
+          manager,
+          { forUpdate: true },
+        );
+        if (Math.abs(current - system) > 0.0005)
+          throw new BadRequestException(
+            'Stock changed since the count snapshot; restart this stocktake',
+          );
         const delta = counted - system;
         if (Math.abs(delta) < 0.0005) continue;
 
@@ -197,12 +236,19 @@ export class StocktakesService {
   }
 
   async cancel(id: string, userId: string) {
-    const session = await this.findOne(id, userId);
-    if (session.status === StocktakeStatus.COMPLETED) {
-      throw new BadRequestException('Cannot cancel a completed stocktake');
-    }
-    session.status = StocktakeStatus.CANCELLED;
-    await this.stocktakeRepo.save(session);
-    return session;
+    await this.findOne(id, userId);
+    await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(Stocktake);
+      const session = await repo
+        .createQueryBuilder('session')
+        .where('session.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!session || session.status === StocktakeStatus.COMPLETED)
+        throw new BadRequestException('Cannot cancel a completed stocktake');
+      session.status = StocktakeStatus.CANCELLED;
+      await repo.save(session);
+    });
+    return this.findOne(id, userId);
   }
 }

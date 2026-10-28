@@ -157,6 +157,16 @@ export class DashboardService {
       0,
     );
 
+    const [returns] = await this.saleRepo.manager.query(
+      `SELECT COALESCE(SUM(round(rl.quantity*rl.unit_price,2)),0) AS revenue,
+      COALESCE(SUM(round(rl.quantity*COALESCE(sl.purchase_cost,0),2)),0) AS cost
+      FROM sale_return_lines rl JOIN sale_returns r ON r.id=rl.return_id LEFT JOIN sale_lines sl ON sl.id=rl.sale_line_id
+      WHERE r.status='ACTIVE' AND ($1::date IS NULL OR r.created_at >= $1::date)
+      AND ($2::date IS NULL OR r.created_at < $2::date + interval '1 day')`,
+      [from ?? null, to ?? null],
+    );
+    revenue -= Number(returns.revenue);
+    cost -= Number(returns.cost);
     const grossProfit = revenue - cost;
     const netProfit = grossProfit - totalExpenses;
     return {

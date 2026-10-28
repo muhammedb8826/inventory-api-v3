@@ -1,3 +1,4 @@
+import { moneyAdd, moneyMultiply } from '../common/utils/money.util';
 import {
   BadRequestException,
   Injectable,
@@ -145,12 +146,21 @@ export class PurchasesService {
 
   async update(id: string, dto: UpdatePurchaseDto, userId?: string) {
     if (this.isNotesOnlyUpdate(dto)) {
-      const purchase = await this.findOne(id);
-      if (purchase.status === DocumentStatus.VOIDED) {
-        throw new BadRequestException('Cannot update a voided purchase');
-      }
-      purchase.notes = dto.notes ?? null;
-      await this.purchaseRepo.save(purchase);
+      await this.dataSource.transaction(async (manager) => {
+        const repository = manager.getRepository(Purchase);
+        await repository
+          .createQueryBuilder('purchase')
+          .where('purchase.id = :id', { id })
+          .setLock('pessimistic_write')
+          .getOne();
+        const purchase = await repository.findOneBy({ id });
+        if (!purchase) throw new NotFoundException('Purchase not found');
+        if (purchase.status === DocumentStatus.VOIDED) {
+          throw new BadRequestException('Cannot update a voided purchase');
+        }
+        purchase.notes = dto.notes ?? null;
+        await repository.save(purchase);
+      });
       return this.findOne(id);
     }
 
@@ -164,6 +174,11 @@ export class PurchasesService {
       const lineRepo = manager.getRepository(PurchaseLine);
       const creditRepo = manager.getRepository(SupplierCredit);
 
+      await purchaseRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const purchase = await purchaseRepo.findOne({
         where: { id },
         relations: { lines: true, credit: true },
@@ -211,7 +226,8 @@ export class PurchasesService {
       }
 
       const subtotal = lines.reduce(
-        (sum, l) => sum + l.quantity * l.unitPrice,
+        (sum, l) =>
+          Number(moneyAdd(sum, moneyMultiply(l.quantity, l.unitPrice))),
         0,
       );
 
@@ -261,7 +277,7 @@ export class PurchasesService {
       purchase.total = subtotal.toFixed(2);
       purchase.notes = notes;
       purchase.lines = lines.map((l) => {
-        const lineTotal = l.quantity * l.unitPrice;
+        const lineTotal = Number(moneyMultiply(l.quantity, l.unitPrice));
         return Object.assign(new PurchaseLine(), {
           itemId: l.itemId,
           quantity: l.quantity.toFixed(3),
@@ -332,6 +348,11 @@ export class PurchasesService {
       const purchaseRepo = manager.getRepository(Purchase);
       const creditRepo = manager.getRepository(SupplierCredit);
 
+      await purchaseRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const purchase = await purchaseRepo.findOne({
         where: { id },
         relations: { lines: true, credit: true },
@@ -401,7 +422,7 @@ export class PurchasesService {
     }
 
     const subtotal = dto.lines.reduce(
-      (sum, l) => sum + l.quantity * l.unitPrice,
+      (sum, l) => Number(moneyAdd(sum, moneyMultiply(l.quantity, l.unitPrice))),
       0,
     );
 
@@ -418,7 +439,7 @@ export class PurchasesService {
       const creditRepo = manager.getRepository(SupplierCredit);
 
       const lines = dto.lines.map((l) => {
-        const lineTotal = l.quantity * l.unitPrice;
+        const lineTotal = Number(moneyMultiply(l.quantity, l.unitPrice));
         return Object.assign(new PurchaseLine(), {
           itemId: l.itemId,
           quantity: l.quantity.toFixed(3),

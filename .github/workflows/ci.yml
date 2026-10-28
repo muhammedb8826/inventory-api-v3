@@ -47,7 +47,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: npm
 
       - name: Install dependencies
@@ -59,74 +59,17 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Dependency security
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Unit tests
         run: npx jest --runInBand
 
       - name: Run migrations
         run: npm run migration:run
 
+      - name: OpenAPI contract snapshot
+        run: npm run openapi:export && git diff --exit-code -- docs/openapi.json
+
       - name: E2E smoke
         run: npx jest --config ./test/jest-e2e.json --runInBand
-
-  # cPanel FTP deploy — only after green CI on a push to main/master (not PRs)
-  deploy:
-    needs: quality
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      # Thin "deploy/" bundles break cPanel: FTP-Deploy mirrors local-dir and deletes
-      # server files not in the bundle (full src/, etc.), then 553 on replace under dist/.
-      - name: Reset stale FTP sync state on server
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq lftp
-          lftp -c "
-            set ssl:verify-certificate no;
-            set ftp:passive-mode true;
-            open -u '${{ secrets.FTP_USERNAME_VGATE }}','${{ secrets.FTP_PASSWORD_VGATE }}' ${{ secrets.FTP_SERVER_VGATE }};
-            cd ${{ secrets.CPANEL_DIR_VGATE }};
-            rm -f .ftp-deploy-sync-state.json;
-            rm -r -f dist;
-            bye
-          "
-
-      - name: Deploy app to cPanel via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER_VGATE }}
-          username: ${{ secrets.FTP_USERNAME_VGATE }}
-          password: ${{ secrets.FTP_PASSWORD_VGATE }}
-          server-dir: ${{ secrets.CPANEL_DIR_VGATE }}
-          local-dir: ./
-          protocol: ftp
-          exclude: |
-            **/.git/**
-            **/.git*/**
-            **/.github/**
-            **/node_modules/**
-            **/uploads/**
-            **/tmp/**
-            **/coverage/**
-            **/.nyc_output/**
-            **/.env
-            **/.env.*
-            **/*.log
-            **/stderr.log
-            **/stdout.log
-            **/deploy/**
-            **/.cursor/**
-            **/agent-transcripts/**

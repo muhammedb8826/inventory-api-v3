@@ -1,0 +1,24 @@
+groups:
+  - name: inventory
+    rules:
+      - alert: InventoryApiUnavailable
+        expr: up{job="inventory-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Inventory API metrics endpoint is unavailable
+      - alert: InventoryApiHighErrorRate
+        expr: sum(rate(inventory_http_errors_total[5m])) / clamp_min(sum(rate(inventory_http_requests_total[5m])), 0.001) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Inventory API server errors exceed 1 percent
+      - alert: InventoryApiAverageLatency
+        expr: sum(rate(inventory_http_duration_seconds_sum[5m])) / clamp_min(sum(rate(inventory_http_requests_total[5m])), 0.001) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Inventory API average request latency exceeds one second

@@ -1,7 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import helmet from 'helmet';
 import { join } from 'path';
 import { Logger } from 'nestjs-pino';
@@ -16,7 +16,8 @@ export function setupApp(app: NestExpressApplication): void {
 
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy:
+        process.env.NODE_ENV === 'production' ? undefined : false,
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
@@ -35,8 +36,10 @@ export function setupApp(app: NestExpressApplication): void {
       .filter(Boolean) ?? [];
   const corsOrigins =
     configuredOrigins.length > 0
-      ? [...new Set([...configuredOrigins, 'http://localhost:3000'])]
-      : true;
+      ? [...new Set(configuredOrigins)]
+      : process.env.NODE_ENV === 'production'
+        ? false
+        : ['http://localhost:3000'];
 
   app.enableCors({
     origin: corsOrigins,
@@ -63,6 +66,11 @@ export function setupApp(app: NestExpressApplication): void {
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
+  if (process.env.OPENAPI_EXPORT_PATH)
+    writeFileSync(
+      process.env.OPENAPI_EXPORT_PATH,
+      JSON.stringify(document, null, 2),
+    );
   SwaggerModule.setup('api/docs', app, document, {
     jsonDocumentUrl: 'api/docs-json',
   });

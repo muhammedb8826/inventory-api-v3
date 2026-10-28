@@ -9,6 +9,7 @@ async function bootstrap() {
     bufferLogs: true,
   });
   setupApp(app);
+  app.enableShutdownHooks();
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

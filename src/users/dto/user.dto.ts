@@ -23,7 +23,7 @@ export class CreateUserDto {
   @IsUUID()
   roleId?: string;
 
-  /** Empty / omitted = all locations (backward compatible). */
+  /** Empty / omitted = no locations unless the role grants locations.all. */
   @IsOptional()
   @IsArray()
   @IsUUID('4', { each: true })
@@ -52,7 +52,7 @@ export class UpdateUserDto {
   @IsBoolean()
   isActive?: boolean;
 
-  /** Pass [] to clear assignments (all locations). */
+  /** Pass [] to clear assignments (no locations). */
   @IsOptional()
   @IsArray()
   @IsUUID('4', { each: true })

@@ -1,3 +1,4 @@
+import { applyLocationScope } from '../location-scope';
 import {
   ObjectLiteral,
   SelectQueryBuilder,
@@ -66,6 +67,7 @@ export function applyDateRangeToQb<T extends ObjectLiteral>(
   from?: string,
   to?: string,
 ) {
+  applyLocationScope(qb);
   const { start, end } = parseDateRange(from, to);
   if (start) qb.andWhere(`${column} >= :rangeStart`, { rangeStart: start });
   if (end) qb.andWhere(`${column} <= :rangeEnd`, { rangeEnd: end });
@@ -127,6 +129,7 @@ export async function paginatedQueryBuilder<T extends ObjectLiteral>(
   page?: number,
   limit?: number,
 ) {
+  applyLocationScope(qb);
   const p = page ?? 1;
   const l = limit ?? 20;
   const [data, total] = await qb
@@ -141,7 +144,7 @@ export async function sumFilteredQueryBuilder<T extends ObjectLiteral>(
   filteredQb: SelectQueryBuilder<T>,
   fields: { key: string; sql: string; decimals?: number }[],
 ): Promise<Record<string, string>> {
-  const qb = filteredQb.clone().orderBy();
+  const qb = applyLocationScope(filteredQb.clone().orderBy());
   fields.forEach(({ key, sql }, index) => {
     if (index === 0) qb.select(sql, key);
     else qb.addSelect(sql, key);

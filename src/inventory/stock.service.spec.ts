@@ -9,10 +9,10 @@ import { StockService } from './stock.service';
 
 describe('StockService', () => {
   let service: StockService;
-  let stockRepo: jest.Mocked<Partial<Repository<StockLevel>>>;
-  let itemRepo: jest.Mocked<Partial<Repository<Item>>>;
-  let movementRepo: jest.Mocked<Partial<Repository<StockMovement>>>;
-  let lotRepo: jest.Mocked<Partial<Repository<StockLot>>>;
+  let stockRepo: Record<string, jest.Mock>;
+  let itemRepo: Record<string, jest.Mock>;
+  let movementRepo: Record<string, jest.Mock>;
+  let lotRepo: Record<string, jest.Mock>;
   let manager: EntityManager;
   let stockLevels: Map<string, StockLevel>;
   let movements: StockMovement[];
@@ -102,12 +102,14 @@ describe('StockService', () => {
 
     manager = {
       getRepository,
+      query: jest.fn(async () => []),
     } as unknown as EntityManager;
 
     // Override locked getOne to read from map using closure patched per call
-    (stockRepo.createQueryBuilder as jest.Mock).mockImplementation(() => {
+    stockRepo.createQueryBuilder.mockImplementation(() => {
       let loc = '';
       let item = '';
+      let inserted: Partial<StockLevel> = {};
       const lockedQb = {
         where: jest.fn((sql: string, params: { locationId: string }) => {
           loc = params.locationId;
@@ -117,6 +119,13 @@ describe('StockService', () => {
           item = params.itemId;
           return lockedQb;
         }),
+        insert: jest.fn().mockReturnThis(),
+        values: jest.fn((value: Partial<StockLevel>) => {
+          inserted = value;
+          return lockedQb;
+        }),
+        orIgnore: jest.fn().mockReturnThis(),
+        execute: jest.fn(async () => stockRepo.save(inserted)),
         setLock: jest.fn().mockReturnThis(),
         getOne: jest.fn(async () => stockLevels.get(key(loc, item)) ?? null),
       };
@@ -392,7 +401,7 @@ describe('StockService', () => {
 
   it('uses setLock pessimistic_write when forUpdate', async () => {
     const setLock = jest.fn();
-    (stockRepo.createQueryBuilder as jest.Mock).mockImplementationOnce(() => {
+    stockRepo.createQueryBuilder.mockImplementationOnce(() => {
       let loc = '';
       let item = '';
       const lockedQb = {

@@ -130,10 +130,14 @@ export class StockTransfersService {
 
     await this.dataSource.transaction(async (manager) => {
       const transferRepo = manager.getRepository(StockTransfer);
+      await transferRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const transfer = await transferRepo.findOne({
         where: { id },
         relations: { lines: true },
-        lock: { mode: 'pessimistic_write' },
       });
       if (!transfer) throw new NotFoundException('Stock transfer not found');
       if (transfer.status !== TransferStatus.PENDING) {
@@ -180,10 +184,14 @@ export class StockTransfersService {
   async receive(id: string, userId?: string) {
     await this.dataSource.transaction(async (manager) => {
       const transferRepo = manager.getRepository(StockTransfer);
+      await transferRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const transfer = await transferRepo.findOne({
         where: { id },
         relations: { lines: true },
-        lock: { mode: 'pessimistic_write' },
       });
       if (!transfer) throw new NotFoundException('Stock transfer not found');
       if (transfer.status !== TransferStatus.IN_TRANSIT) {
@@ -232,59 +240,48 @@ export class StockTransfersService {
    * IN_TRANSIT cannot be cancelled here — receive or admin reverse required.
    */
   async void(id: string) {
-    const transfer = await this.transferRepo.findOne({
-      where: { id },
-      relations: { lines: true },
-    });
-    if (!transfer) throw new NotFoundException('Stock transfer not found');
-
-    if (transfer.status === TransferStatus.PENDING) {
-      await this.dataSource.transaction(async (manager) => {
-        const transferRepo = manager.getRepository(StockTransfer);
-        for (const line of transfer.lines) {
+    await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(StockTransfer);
+      await repo
+        .createQueryBuilder('transfer')
+        .where('transfer.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
+      const transfer = await repo.findOne({
+        where: { id },
+        relations: { lines: true },
+      });
+      if (!transfer) throw new NotFoundException('Stock transfer not found');
+      if (transfer.status === TransferStatus.PENDING) {
+        for (const line of transfer.lines)
           await this.stockService.releaseReservation(
             transfer.fromLocationId,
             line.itemId,
-            parseFloat(line.quantity),
+            Number(line.quantity),
             manager,
           );
-        }
-        transfer.status = TransferStatus.CANCELLED;
-        await transferRepo.save(transfer);
-      });
-      return this.findOne(id);
-    }
-
-    if (transfer.status === TransferStatus.IN_TRANSIT) {
-      throw new BadRequestException(
-        'Cannot cancel an in-transit transfer; receive it first or contact an admin',
-      );
-    }
-
-    if (transfer.status !== TransferStatus.COMPLETED) {
-      throw new BadRequestException('Transfer cannot be voided in this status');
-    }
-
-    await this.dataSource.transaction(async (manager) => {
-      const transferRepo = manager.getRepository(StockTransfer);
-      for (const line of transfer.lines) {
-        await this.stockService.transfer(
-          transfer.toLocationId,
-          transfer.fromLocationId,
-          line.itemId,
-          parseFloat(line.quantity),
-          manager,
-          {
-            refType: 'stock_transfer',
-            refId: transfer.id,
-            notes: 'Transfer voided',
-          },
+      } else if (transfer.status === TransferStatus.COMPLETED) {
+        for (const line of transfer.lines)
+          await this.stockService.transfer(
+            transfer.toLocationId,
+            transfer.fromLocationId,
+            line.itemId,
+            Number(line.quantity),
+            manager,
+            {
+              refType: 'stock_transfer_void',
+              refId: transfer.id,
+              notes: 'Transfer voided',
+            },
+          );
+      } else {
+        throw new BadRequestException(
+          'Only pending or completed transfers can be cancelled',
         );
       }
       transfer.status = TransferStatus.CANCELLED;
-      await transferRepo.save(transfer);
+      await repo.save(transfer);
     });
-
     return this.findOne(id);
   }
 }

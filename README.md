@@ -1,5 +1,7 @@
 # Stock Management API
 
+> Production hardening and UI upgrade: see [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for migration, session, access-control and deployment changes.
+
 NestJS + PostgreSQL backend for multi-location inventory, purchases, sales, banking, expenses, credits, and dynamic role-based access control.
 
 ## Features

@@ -26,6 +26,9 @@ export class User extends UuidBaseEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  @Column({ name: 'session_version', type: 'int', default: 0 })
+  sessionVersion: number;
+
   @Column({ name: 'role_id', type: 'uuid', nullable: true })
   roleId: string | null;
 
@@ -36,7 +39,7 @@ export class User extends UuidBaseEntity {
   @OneToMany(() => RefreshToken, (token) => token.user)
   refreshTokens: RefreshToken[];
 
-  /** Empty = all locations (unless enforced elsewhere). Assigned = restricted. */
+  /** Empty = no locations; locations.all grants business-wide access. */
   @OneToMany(() => UserLocation, (ul) => ul.user, { cascade: true })
   userLocations: UserLocation[];
 

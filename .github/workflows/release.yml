@@ -1,0 +1,74 @@
+name: SSH release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: inventory_release_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE: inventory_release_test
+      DB_SYNCHRONIZE: 'false'
+      DB_SEED: 'true'
+      JWT_AT_SECRET: release-test-access-secret-not-production
+      JWT_RT_SECRET: release-test-refresh-secret-not-production
+      SEED_ADMIN_EMAIL: admin@stock.local
+      SEED_ADMIN_PASSWORD: Admin@123
+      LOG_LEVEL: warn
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run build
+        env:
+          API_URL: ${{ vars.API_URL }}
+          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
+      - run: npm test -- --runInBand
+      - run: npm run migration:run
+      - run: npm run test:e2e -- --runInBand
+      - name: Prepare release
+        run: tar -czf /tmp/release.tgz dist package.json package-lock.json scripts
+      - name: Deploy using verified SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+        run: |
+          [[ "$DEPLOY_ROOT" =~ ^/[a-zA-Z0-9_./-]+$ && "$DEPLOY_ROOT" != / ]] || exit 2
+          [[ "$SSH_USER" =~ ^[a-zA-Z0-9_-]+$ && "$SSH_HOST" =~ ^[a-zA-Z0-9.-]+$ ]] || exit 2
+          [[ "$HEALTH_URL" =~ ^https://[a-zA-Z0-9./_-]+$ ]] || exit 2
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          scp -o StrictHostKeyChecking=yes /tmp/release.tgz "$SSH_USER@$SSH_HOST:$DEPLOY_ROOT/incoming-$GITHUB_SHA.tgz"
+          ssh -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" "DEPLOY_ROOT='$DEPLOY_ROOT' RELEASE_ID='$GITHUB_SHA' HEALTH_URL='$HEALTH_URL' bash -s" < scripts/deploy-release.sh

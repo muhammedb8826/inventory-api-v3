@@ -1,3 +1,4 @@
+import { applyLocationScope } from '../common/location-scope';
 import {
   BadRequestException,
   ConflictException,
@@ -219,7 +220,7 @@ export class InventoryService {
       qb.andWhere('stock.location_id = :locationId', { locationId });
     }
 
-    const rows = await qb.getMany();
+    const rows = await applyLocationScope(qb).getMany();
     if (!rows.length) {
       throw new NotFoundException('No item found for barcode/SKU');
     }
@@ -705,8 +706,7 @@ export class InventoryService {
     }
 
     await this.dataSource.transaction(async (manager) => {
-      // Transfer does not carry lot metadata on movements; adjust via
-      // reserve/ship when no lot, or explicit adjust pair when lot given.
+      // Explicit lot moves preserve expiry and enforce unreserved availability.
       if (dto.lotNumber?.trim()) {
         const source = await this.stockService.getStock(
           dto.fromLocationId,
@@ -715,6 +715,18 @@ export class InventoryService {
           { forUpdate: true },
         );
         const unitCost = source ? parseFloat(source.purchasePrice) : 0;
+        const available = await this.stockService.getAvailable(
+          dto.fromLocationId,
+          dto.itemId,
+          manager,
+          { forUpdate: true },
+        );
+        if (available < dto.quantity)
+          throw new BadRequestException('Insufficient available stock');
+        const [sourceLot] = await manager.query(
+          'SELECT expiry_date FROM stock_lots WHERE location_id=$1 AND item_id=$2 AND lot_number=$3',
+          [dto.fromLocationId, dto.itemId, dto.lotNumber.trim()],
+        );
         await this.stockService.adjust(
           {
             locationId: dto.fromLocationId,
@@ -737,6 +749,7 @@ export class InventoryService {
             quantityDelta: dto.quantity,
             purchasePrice: unitCost,
             lotNumber: dto.lotNumber,
+            expiryDate: sourceLot?.expiry_date ?? null,
             movement: {
               type: StockMovementType.TRANSFER_IN,
               refType: mode,
@@ -774,6 +787,10 @@ export class InventoryService {
 
   async remove(id: string) {
     const stock = await this.findOne(id);
+    if (Number(stock.quantity) !== 0 || Number(stock.reserved ?? 0) !== 0)
+      throw new BadRequestException(
+        'Only zero-balance, unreserved stock records can be deleted',
+      );
     await this.stockRepo.remove(stock);
     return { success: true };
   }
@@ -970,7 +987,15 @@ export class InventoryService {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new BadRequestException('imageUrl must be http or https');
     }
-    if (isBlockedImageHost(parsed.hostname)) {
+    const hosts = (process.env.IMAGE_FETCH_ALLOWED_HOSTS ?? '')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean);
+    if (
+      parsed.protocol !== 'https:' ||
+      !hosts.includes(parsed.hostname.toLowerCase()) ||
+      isBlockedImageHost(parsed.hostname)
+    ) {
       throw new BadRequestException('imageUrl host is not allowed');
     }
 
@@ -980,7 +1005,7 @@ export class InventoryService {
     try {
       response = await fetch(parsed.toString(), {
         signal: controller.signal,
-        redirect: 'follow',
+        redirect: 'error',
         headers: { Accept: 'image/*' },
       });
     } catch {

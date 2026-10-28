@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { BankTransactionDirection, BankTransactionType } from '../common/enums';
+import { moneyAdd } from '../common/utils/money.util';
 import { BankAccount } from '../database/entities/bank-account.entity';
 import { BankTransaction } from '../database/entities/bank-transaction.entity';
 
@@ -36,10 +37,19 @@ export class BankLedgerService {
     params: RecordTransactionParams,
     manager?: EntityManager,
   ): Promise<BankTransaction> {
+    if (!manager) {
+      return this.accountRepo.manager.transaction((tx) =>
+        this.recordTransaction(params, tx),
+      );
+    }
+    if (!Number.isFinite(params.amount) || params.amount <= 0) {
+      throw new BadRequestException('Amount must be positive and finite');
+    }
     const { account, tx } = this.repos(manager);
 
     const row = await account.findOne({
       where: { id: params.bankAccountId, isActive: true },
+      lock: { mode: 'pessimistic_write' },
     });
     if (!row) throw new BadRequestException('Bank account not found');
 
@@ -54,8 +64,8 @@ export class BankLedgerService {
         ? Math.abs(params.amount)
         : -Math.abs(params.amount);
 
-    const newBalance = parseFloat(row.balance) + signed;
-    row.balance = newBalance.toFixed(2);
+    const newBalance = moneyAdd(row.balance, signed);
+    row.balance = newBalance;
     await account.save(row);
 
     return tx.save(
@@ -64,7 +74,7 @@ export class BankLedgerService {
         type: params.type,
         direction,
         amount: Math.abs(params.amount).toFixed(2),
-        balanceAfter: newBalance.toFixed(2),
+        balanceAfter: newBalance,
         description: params.description ?? null,
         refType: params.refType ?? null,
         refId: params.refId ?? null,

@@ -298,6 +298,11 @@ export class ProductionService {
   async release(id: string, actorUserId?: string) {
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
+      await orderRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const order = await orderRepo.findOne({
         where: { id },
         relations: { lines: { componentItem: true } },
@@ -370,6 +375,11 @@ export class ProductionService {
 
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
+      await orderRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const order = await orderRepo.findOne({
         where: { id },
         relations: { lines: { componentItem: true } },
@@ -510,6 +520,11 @@ export class ProductionService {
 
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
+      await orderRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const order = await orderRepo.findOne({
         where: { id },
         relations: { lines: { componentItem: true } },
@@ -722,6 +737,11 @@ export class ProductionService {
 
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
+      await orderRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const order = await orderRepo.findOne({
         where: { id },
         relations: { lines: { componentItem: true } },
@@ -845,6 +865,11 @@ export class ProductionService {
 
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
+      await orderRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const order = await orderRepo.findOne({ where: { id } });
       if (!order) throw new NotFoundException('Production order not found');
 
@@ -921,6 +946,11 @@ export class ProductionService {
 
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
+      await orderRepo
+        .createQueryBuilder('document')
+        .where('document.id = :id', { id })
+        .setLock('pessimistic_write')
+        .getOne();
       const order = await orderRepo.findOne({
         where: { id },
         relations: { lines: true },

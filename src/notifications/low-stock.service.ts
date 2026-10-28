@@ -1,3 +1,4 @@
+import { applyLocationScope } from '../common/location-scope';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -33,9 +34,9 @@ export class LowStockService {
       .leftJoinAndSelect('stock.item', 'item')
       .leftJoinAndSelect('stock.location', 'location')
       .where(
-        `(stock.reorder_point IS NOT NULL
+        `((stock.reorder_point IS NOT NULL
           AND CAST(stock.quantity AS DECIMAL) <= CAST(stock.reorder_point AS DECIMAL))
-         OR CAST(stock.quantity AS DECIMAL) <= 0`,
+         OR CAST(stock.quantity AS DECIMAL) <= 0)`,
       )
       .orderBy('stock.quantity', 'ASC');
 
@@ -45,7 +46,7 @@ export class LowStockService {
       });
     }
 
-    const [data, total] = await qb
+    const [data, total] = await applyLocationScope(qb)
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();

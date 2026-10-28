@@ -1,68 +1,8 @@
-# Manual redeploy (same FTP strategy as ci.yml deploy job).
-name: Deploy VGATE API to cPanel via FTP
-
+name: Legacy deployment disabled
 on:
   workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Manual deploy reason'
-        required: false
-        default: 'manual'
-
 jobs:
-  web-deploy:
+  instructions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Reset stale FTP sync state on server
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq lftp
-          lftp -c "
-            set ssl:verify-certificate no;
-            set ftp:passive-mode true;
-            open -u '${{ secrets.FTP_USERNAME_VGATE }}','${{ secrets.FTP_PASSWORD_VGATE }}' ${{ secrets.FTP_SERVER_VGATE }};
-            cd ${{ secrets.CPANEL_DIR_VGATE }};
-            rm -f .ftp-deploy-sync-state.json;
-            rm -r -f dist;
-            bye
-          "
-
-      - name: Deploy app to cPanel via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER_VGATE }}
-          username: ${{ secrets.FTP_USERNAME_VGATE }}
-          password: ${{ secrets.FTP_PASSWORD_VGATE }}
-          server-dir: ${{ secrets.CPANEL_DIR_VGATE }}
-          local-dir: ./
-          protocol: ftp
-          exclude: |
-            **/.git/**
-            **/.git*/**
-            **/.github/**
-            **/node_modules/**
-            **/uploads/**
-            **/tmp/**
-            **/coverage/**
-            **/.nyc_output/**
-            **/.env
-            **/.env.*
-            **/*.log
-            **/stderr.log
-            **/stdout.log
-            **/deploy/**
-            **/.cursor/**
-            **/agent-transcripts/**
+      - run: echo "Use the SSH release workflow. Plain FTP deployment has been retired."

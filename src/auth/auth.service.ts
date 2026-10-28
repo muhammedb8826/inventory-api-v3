@@ -8,7 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
 import { hashToken } from '../common/utils/token-hash.util';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
 import { User } from '../database/entities/user.entity';
@@ -53,26 +54,42 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const tokenHash = hashToken(refreshToken);
-    const stored = await this.refreshRepo.findOne({
-      where: { tokenHash, isRevoked: false },
-      relations: { user: true },
-    });
-    if (!stored || stored.expiresAt < new Date()) {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-
-    const user = await this.userRepo.findOne({
-      where: { id: stored.userId, isActive: true },
-      relations: { role: { permissions: true } },
-    });
-    if (!user) throw new UnauthorizedException('User inactive');
-
-    stored.isRevoked = true;
-    await this.refreshRepo.save(stored);
-
-    const tokens = await this.issueTokens(user.id, user.email);
-    return { user: this.toUserProfile(user), ...tokens };
+    const result = await this.refreshRepo.manager.transaction(
+      async (manager) => {
+        const repo = manager.getRepository(RefreshToken);
+        const stored = await repo.findOne({
+          where: { tokenHash: hashToken(refreshToken) },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (stored?.isRevoked) {
+          await repo.update({ userId: stored.userId }, { isRevoked: true });
+          await manager
+            .getRepository(User)
+            .increment({ id: stored.userId }, 'sessionVersion', 1);
+          return null;
+        }
+        if (!stored || stored.expiresAt < new Date()) {
+          throw new UnauthorizedException('Invalid refresh token');
+        }
+        const user = await manager.getRepository(User).findOne({
+          where: { id: stored.userId, isActive: true },
+          relations: { role: { permissions: true } },
+        });
+        if (!user) throw new UnauthorizedException('User inactive');
+        const original = this.jwt.decode(refreshToken);
+        if ((original.sv ?? 0) !== user.sessionVersion)
+          throw new UnauthorizedException('Session revoked');
+        stored.isRevoked = true;
+        await repo.save(stored);
+        const tokens = await this.issueTokens(user.id, user.email, manager);
+        return { user: this.toUserProfile(user), ...tokens };
+      },
+    );
+    if (!result)
+      throw new UnauthorizedException(
+        'Refresh token reuse detected; sign in again',
+      );
+    return result;
   }
 
   async logout(refreshToken: string) {
@@ -129,7 +146,8 @@ export class AuthService {
       throw new BadRequestException('Current password is incorrect');
     }
 
-    user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    user.passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    user.sessionVersion += 1;
     await this.userRepo.save(user);
 
     await this.refreshRepo.update(
@@ -164,8 +182,19 @@ export class AuthService {
     };
   }
 
-  private async issueTokens(userId: string, email: string) {
-    const payload = { sub: userId, email };
+  private async issueTokens(
+    userId: string,
+    email: string,
+    manager?: EntityManager,
+  ) {
+    const users = manager ? manager.getRepository(User) : this.userRepo;
+    const user = await users.findOneByOrFail({ id: userId });
+    const payload = {
+      sub: userId,
+      email,
+      jti: randomUUID(),
+      sv: user.sessionVersion,
+    };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(payload, {
         secret: this.config.get<string>('jwt.accessSecret'),
@@ -177,14 +206,15 @@ export class AuthService {
       }),
     ]);
 
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-
-    await this.refreshRepo.save(
-      this.refreshRepo.create({
+    const decoded = this.jwt.decode(refreshToken);
+    const repo = manager
+      ? manager.getRepository(RefreshToken)
+      : this.refreshRepo;
+    await repo.save(
+      repo.create({
         userId,
         tokenHash: hashToken(refreshToken),
-        expiresAt,
+        expiresAt: new Date(decoded.exp * 1000),
       }),
     );
 

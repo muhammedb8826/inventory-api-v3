@@ -25,7 +25,40 @@ export class ProfitLossService {
       .innerJoin('line.sale', 'sale')
       .andWhere('sale.status = :status', { status: DocumentStatus.ACTIVE });
     applyDateRangeToQb(qb, 'sale.created_at', from, to);
-    return qb.getMany();
+    const sales = await qb.getMany();
+    const returned: {
+      item_id: string;
+      quantity: string;
+      line_total: string;
+      purchase_cost: string;
+      description: string;
+    }[] = await this.saleLineRepo.manager.query(
+      `SELECT rl.item_id, -rl.quantity AS quantity,
+      -(round(rl.quantity * rl.unit_price, 2)) AS line_total, COALESCE(sl.purchase_cost, 0) AS purchase_cost,
+      i.description FROM sale_return_lines rl JOIN sale_returns r ON r.id = rl.return_id
+      LEFT JOIN sale_lines sl ON sl.id = rl.sale_line_id JOIN items i ON i.id = rl.item_id
+      WHERE r.status = 'ACTIVE' AND ($1::date IS NULL OR r.created_at >= $1::date)
+      AND ($2::date IS NULL OR r.created_at < $2::date + interval '1 day')`,
+      [from ?? null, to ?? null],
+    );
+    return [
+      ...sales,
+      ...returned.map(
+        (row: {
+          item_id: string;
+          quantity: string;
+          line_total: string;
+          purchase_cost: string;
+          description: string;
+        }) => ({
+          itemId: row.item_id,
+          quantity: row.quantity,
+          lineTotal: row.line_total,
+          purchaseCost: row.purchase_cost,
+          item: { description: row.description },
+        }),
+      ),
+    ];
   }
 
   private async loadExpenses(from?: string, to?: string) {

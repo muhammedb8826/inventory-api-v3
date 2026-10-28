@@ -105,7 +105,8 @@ export class UsersService {
       patch.roleId = role?.id ?? null;
     }
     if (dto.password) {
-      patch.passwordHash = await bcrypt.hash(dto.password, 10);
+      patch.passwordHash = await bcrypt.hash(dto.password, 12);
+      await this.userRepo.increment({ id }, 'sessionVersion', 1);
     }
 
     if (Object.keys(patch).length > 0) {

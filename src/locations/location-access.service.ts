@@ -30,7 +30,7 @@ export class LocationAccessService {
     if (codes.has('locations.all')) return null;
 
     const rows = await this.userLocationRepo.find({ where: { userId } });
-    if (rows.length === 0) return null;
+    if (rows.length === 0) return [];
     return rows.map((r) => r.locationId);
   }
 

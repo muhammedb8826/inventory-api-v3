@@ -1,7 +1,8 @@
+import { ApiThrottlerGuard } from './common/guards/api-throttler.guard';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { randomUUID } from 'crypto';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
@@ -44,6 +45,11 @@ import { UsersModule } from './users/users.module';
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.LOG_LEVEL ?? 'info',
+        redact: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'res.headers["set-cookie"]',
+        ],
         genReqId: (req, res) => {
           const existing = req.headers['x-request-id'];
           const id =
@@ -103,7 +109,7 @@ import { UsersModule } from './users/users.module';
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: ApiThrottlerGuard,
     },
   ],
 })
