@@ -4,7 +4,7 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "tsConfigPath": "tsconfig.build.json",
+    "tsConfigPath": "tsconfig.json",
     "plugins": [
       {
         "name": "@nestjs/swagger",
