@@ -50,3 +50,9 @@ FTP/TLS behavior follows Python's [ftplib documentation](https://docs.python.org
 Commit and push the workflow/script changes before rerunning. A rerun of an older workflow run uses the older commit; run CI/Quality on the updated production branch instead.
 
 Certificate trust uses Python's [SSL context API](https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_verify_locations).
+
+## Upload appears stuck after the TLS warning
+
+The certificate-verification warning is informational. Earlier script versions produced no progress output between that warning and upload completion. The uploader now flushes connection, authentication, application-directory and individual file progress immediately; the workflow also runs Python unbuffered. Large files report transferred bytes at least every ten seconds while data is moving. Socket operations time out after 90 seconds without activity; a healthy complete upload can take longer, subject to the deploy job's 30-minute limit.
+
+The final visible stage identifies what to inspect. Connection/authentication failures can involve host access restrictions. An upload timeout after login can involve blocked passive FTP data ports or FTPS data-channel requirements on the hosting firewall. Ask the provider to check those settings if that is the logged failure stage. The script does not fall back to plaintext FTP. The payload summary shows the number of files and size; uploading a Next.js build may involve many small files.
