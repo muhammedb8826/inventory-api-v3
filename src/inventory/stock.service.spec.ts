@@ -145,7 +145,7 @@ describe('StockService', () => {
       itemId: 'item-1',
       quantity: '10.000',
       reserved: '0',
-        purchasePrice: '10.00',
+      purchasePrice: '10.00',
     } as StockLevel);
 
     const row = await service.adjust(
@@ -214,7 +214,7 @@ describe('StockService', () => {
       itemId: 'item-1',
       quantity: '8.000',
       reserved: '0',
-        purchasePrice: '4.00',
+      purchasePrice: '4.00',
     } as StockLevel);
 
     await service.transfer('from', 'to', 'item-1', 3, manager, {
@@ -237,7 +237,7 @@ describe('StockService', () => {
       itemId: 'item-1',
       quantity: '1.000',
       reserved: '0',
-        purchasePrice: '1.00',
+      purchasePrice: '1.00',
     } as StockLevel);
 
     await expect(
@@ -257,7 +257,7 @@ describe('StockService', () => {
       itemId: 'item-1',
       quantity: '1.000',
       reserved: '0',
-        purchasePrice: '1.00',
+      purchasePrice: '1.00',
     } as StockLevel);
 
     const warnings = await service.checkAvailability(
@@ -277,7 +277,7 @@ describe('StockService', () => {
       itemId: 'item-1',
       quantity: '2.000',
       reserved: '0',
-        purchasePrice: '5.00',
+      purchasePrice: '5.00',
     } as StockLevel);
 
     const row = await service.adjust(
@@ -310,7 +310,7 @@ describe('StockService', () => {
       itemId: 'item-1',
       quantity: '7.000',
       reserved: '0',
-        purchasePrice: '3.00',
+      purchasePrice: '3.00',
     } as StockLevel);
 
     await service.adjust(
@@ -357,7 +357,7 @@ describe('StockService', () => {
       itemId: 'item-1',
       quantity: '1.000',
       reserved: '0',
-        purchasePrice: '4.00',
+      purchasePrice: '4.00',
     } as StockLevel);
 
     await expect(
@@ -367,17 +367,14 @@ describe('StockService', () => {
   });
 
   it('reserve reduces available without changing on-hand qty', async () => {
-    stockLevels.set(
-      key('loc-1', 'item-1'),
-      {
-        id: 's1',
-        locationId: 'loc-1',
-        itemId: 'item-1',
-        quantity: '10.000',
-        reserved: '0',
-        purchasePrice: '1.00',
-      } as StockLevel,
-    );
+    stockLevels.set(key('loc-1', 'item-1'), {
+      id: 's1',
+      locationId: 'loc-1',
+      itemId: 'item-1',
+      quantity: '10.000',
+      reserved: '0',
+      purchasePrice: '1.00',
+    } as StockLevel);
 
     await service.reserve('loc-1', 'item-1', 4, manager);
     expect(stockLevels.get(key('loc-1', 'item-1'))!.reserved).toBe('4.000');
@@ -419,11 +416,10 @@ describe('StockService', () => {
       itemId: 'item-1',
       quantity: '1.000',
       reserved: '0',
-        purchasePrice: '1.00',
+      purchasePrice: '1.00',
     } as StockLevel);
 
     await service.getStock('loc-1', 'item-1', manager, { forUpdate: true });
     expect(setLock).toHaveBeenCalledWith('pessimistic_write');
   });
 });
-

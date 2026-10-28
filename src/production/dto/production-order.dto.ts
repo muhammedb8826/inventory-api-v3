@@ -18,13 +18,24 @@ export class CreateProductionOrderDto {
   @IsUUID()
   bomId: string;
 
+  /** Component issue location. */
   @IsUUID()
   locationId: string;
+
+  /** FG receipt location; defaults to locationId. */
+  @IsOptional()
+  @IsUUID()
+  finishedLocationId?: string;
 
   @Type(() => Number)
   @IsNumber()
   @Min(0.001)
   quantityPlanned: number;
+
+  /** Flatten multi-level BOM to leaf components (default true). */
+  @IsOptional()
+  @IsBoolean()
+  explodeBom?: boolean;
 
   @IsOptional()
   @IsString()
@@ -60,6 +71,28 @@ export class CompleteProductionDto {
   @IsOptional()
   @IsBoolean()
   autoIssue?: boolean;
+}
+
+export class UnbuildProductionDto {
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantity: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class ScrapProductionDto {
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantity: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 
 export class ProductionOrderListQueryDto extends DateRangeQueryDto {

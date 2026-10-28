@@ -1,11 +1,5 @@
 import { Type } from 'class-transformer';
-import {
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Min,
-} from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 /** Putaway: move stock into a BIN. Pick: move stock out of a BIN. */
 export class WarehouseMoveDto {

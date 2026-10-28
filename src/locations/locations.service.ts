@@ -43,8 +43,7 @@ export class LocationsService {
     applyIlikeSearch(qb, query.search, ['location.name']);
 
     if (userId) {
-      const allowed =
-        await this.locationAccess.getAllowedLocationIds(userId);
+      const allowed = await this.locationAccess.getAllowedLocationIds(userId);
       if (allowed) {
         // Access to a warehouse/showroom includes its bins.
         qb.andWhere(
@@ -64,9 +63,8 @@ export class LocationsService {
     });
     if (!loc) throw new NotFoundException('Location not found');
     if (userId) {
-      const scopeId = loc.type === LocationType.BIN && loc.parentId
-        ? loc.parentId
-        : loc.id;
+      const scopeId =
+        loc.type === LocationType.BIN && loc.parentId ? loc.parentId : loc.id;
       await this.locationAccess.assertCanAccessLocation(userId, scopeId);
     }
     return loc;
@@ -79,8 +77,7 @@ export class LocationsService {
         name: dto.name,
         type: dto.type,
         address: dto.address ?? null,
-        parentId:
-          dto.type === LocationType.BIN ? (dto.parentId ?? null) : null,
+        parentId: dto.type === LocationType.BIN ? (dto.parentId ?? null) : null,
       }),
     );
   }
@@ -88,8 +85,7 @@ export class LocationsService {
   async update(id: string, dto: UpdateLocationDto) {
     const loc = await this.findOne(id);
     const nextType = dto.type ?? loc.type;
-    const nextParent =
-      dto.parentId !== undefined ? dto.parentId : loc.parentId;
+    const nextParent = dto.parentId !== undefined ? dto.parentId : loc.parentId;
     await this.assertParent(nextType, nextParent ?? undefined);
     Object.assign(loc, dto);
     if (nextType !== LocationType.BIN) {
@@ -104,15 +100,10 @@ export class LocationsService {
     return this.locationRepo.save(loc);
   }
 
-  private async assertParent(
-    type: LocationType,
-    parentId?: string | null,
-  ) {
+  private async assertParent(type: LocationType, parentId?: string | null) {
     if (type === LocationType.BIN) {
       if (!parentId) {
-        throw new BadRequestException(
-          'parentId is required for BIN locations',
-        );
+        throw new BadRequestException('parentId is required for BIN locations');
       }
       const parent = await this.locationRepo.findOne({
         where: { id: parentId },

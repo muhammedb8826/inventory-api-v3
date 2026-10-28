@@ -39,10 +39,7 @@ export class StockTransfersController {
 
   @Post()
   @RequirePermissions('stock_transfer.write')
-  create(
-    @Body() dto: CreateStockTransferDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
+  create(@Body() dto: CreateStockTransferDto, @CurrentUser() user: JwtPayload) {
     return this.service.create(dto, user.sub);
   }
 

@@ -22,7 +22,11 @@ export class Stocktake extends UuidBaseEntity {
   @JoinColumn({ name: 'location_id' })
   location: Location;
 
-  @Column({ type: 'enum', enum: StocktakeStatus, default: StocktakeStatus.DRAFT })
+  @Column({
+    type: 'enum',
+    enum: StocktakeStatus,
+    default: StocktakeStatus.DRAFT,
+  })
   status: StocktakeStatus;
 
   @Column({ type: 'text', nullable: true })

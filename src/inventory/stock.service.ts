@@ -398,10 +398,12 @@ export class StockService {
       qb.andWhere('lot.item_id = :itemId', { itemId: filters.itemId });
     }
     if (filters.expiringBefore) {
-      qb.andWhere('lot.expiry_date IS NOT NULL')
-        .andWhere('lot.expiry_date <= :expiringBefore', {
+      qb.andWhere('lot.expiry_date IS NOT NULL').andWhere(
+        'lot.expiry_date <= :expiringBefore',
+        {
           expiringBefore: filters.expiringBefore,
-        });
+        },
+      );
     }
     return qb.getMany();
   }

@@ -11,6 +11,7 @@ import {
   applyIlikeSearch,
   paginatedQueryBuilder,
 } from '../common/utils/query.util';
+import { BomsService } from '../boms/boms.service';
 import { Bom } from '../database/entities/bom.entity';
 import { Item } from '../database/entities/item.entity';
 import { Location } from '../database/entities/location.entity';
@@ -23,6 +24,8 @@ import {
   CreateProductionOrderDto,
   IssueProductionDto,
   ProductionOrderListQueryDto,
+  ScrapProductionDto,
+  UnbuildProductionDto,
 } from './dto/production-order.dto';
 
 @Injectable()
@@ -40,6 +43,7 @@ export class ProductionService {
     private readonly dataSource: DataSource,
     private readonly stockService: StockService,
     private readonly lowStockService: LowStockService,
+    private readonly bomsService: BomsService,
   ) {}
 
   findAll(query: ProductionOrderListQueryDto) {
@@ -47,6 +51,7 @@ export class ProductionService {
       .createQueryBuilder('po')
       .leftJoinAndSelect('po.finishedItem', 'finishedItem')
       .leftJoinAndSelect('po.location', 'location')
+      .leftJoinAndSelect('po.finishedLocation', 'finishedLocation')
       .leftJoinAndSelect('po.bom', 'bom')
       .leftJoinAndSelect('po.lines', 'lines')
       .leftJoinAndSelect('lines.componentItem', 'componentItem')
@@ -54,9 +59,10 @@ export class ProductionService {
       .orderBy('po.created_at', 'DESC');
 
     if (query.locationId) {
-      qb.andWhere('po.location_id = :locationId', {
-        locationId: query.locationId,
-      });
+      qb.andWhere(
+        '(po.location_id = :locationId OR po.finished_location_id = :locationId)',
+        { locationId: query.locationId },
+      );
     }
     if (query.finishedItemId) {
       qb.andWhere('po.finished_item_id = :finishedItemId', {
@@ -71,6 +77,7 @@ export class ProductionService {
     }
     applyIlikeSearch(qb, query.search, [
       'po.notes',
+      'po.order_number',
       'finishedItem.description',
       'finishedItem.sku',
       'bom.name',
@@ -86,6 +93,7 @@ export class ProductionService {
       relations: {
         finishedItem: true,
         location: true,
+        finishedLocation: true,
         bom: true,
         createdBy: true,
         lines: { componentItem: true },
@@ -105,32 +113,71 @@ export class ProductionService {
     if (!bom.lines?.length) {
       throw new BadRequestException('BOM has no component lines');
     }
+    this.assertBomEffective(bom);
 
     const location = await this.locationRepo.findOne({
       where: { id: dto.locationId },
     });
     if (!location) throw new BadRequestException('Location not found');
 
+    const finishedLocationId = dto.finishedLocationId ?? dto.locationId;
+    if (finishedLocationId !== dto.locationId) {
+      const finLoc = await this.locationRepo.findOne({
+        where: { id: finishedLocationId },
+      });
+      if (!finLoc) {
+        throw new BadRequestException('Finished location not found');
+      }
+    }
+
+    const explode = dto.explodeBom !== false;
+    let lineSpecs: { componentItemId: string; quantityRequired: number }[];
+    if (explode) {
+      lineSpecs = await this.bomsService.explodeForProduction(
+        bom.id,
+        dto.quantityPlanned,
+      );
+    } else {
+      const yieldPct = parseFloat(bom.yieldPercent) || 100;
+      const materialMultiplier = yieldPct > 0 ? 100 / yieldPct : 1;
+      lineSpecs = bom.lines.map((line) => {
+        const scrap = parseFloat(line.scrapPercent) || 0;
+        const perUnit = parseFloat(line.quantity) * (1 + scrap / 100);
+        return {
+          componentItemId: line.componentItemId,
+          quantityRequired: perUnit * dto.quantityPlanned * materialMultiplier,
+        };
+      });
+    }
+
+    if (!lineSpecs.length) {
+      throw new BadRequestException('Exploded BOM has no leaf components');
+    }
+
+    const orderNumber = await this.nextOrderNumber();
+
     const order = await this.orderRepo.save(
       this.orderRepo.create({
+        orderNumber,
         bomId: bom.id,
         finishedItemId: bom.finishedItemId,
         locationId: dto.locationId,
+        finishedLocationId,
         quantityPlanned: dto.quantityPlanned.toFixed(3),
         quantityCompleted: '0.000',
+        quantityScrapped: '0.000',
+        materialsReserved: false,
         status: ProductionOrderStatus.DRAFT,
         notes: dto.notes?.trim() || null,
         createdById: userId ?? null,
-        lines: bom.lines.map((line) => {
-          const scrap = parseFloat(line.scrapPercent) || 0;
-          const perUnit = parseFloat(line.quantity) * (1 + scrap / 100);
-          const required = perUnit * dto.quantityPlanned;
-          return Object.assign(new ProductionOrderLine(), {
-            componentItemId: line.componentItemId,
-            quantityRequired: required.toFixed(3),
+        lines: lineSpecs.map((spec) =>
+          Object.assign(new ProductionOrderLine(), {
+            componentItemId: spec.componentItemId,
+            quantityRequired: spec.quantityRequired.toFixed(3),
             quantityIssued: '0.000',
-          });
-        }),
+            issuedValue: '0.00',
+          }),
+        ),
       }),
     );
 
@@ -138,13 +185,58 @@ export class ProductionService {
   }
 
   async release(id: string) {
-    const order = await this.findOne(id);
-    if (order.status !== ProductionOrderStatus.DRAFT) {
-      throw new BadRequestException('Only DRAFT orders can be released');
-    }
-    order.status = ProductionOrderStatus.RELEASED;
-    order.releasedAt = new Date();
-    await this.orderRepo.save(order);
+    await this.dataSource.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(ProductionOrder);
+      const order = await orderRepo.findOne({
+        where: { id },
+        relations: { lines: { componentItem: true } },
+      });
+      if (!order) throw new NotFoundException('Production order not found');
+      if (order.status !== ProductionOrderStatus.DRAFT) {
+        throw new BadRequestException('Only DRAFT orders can be released');
+      }
+
+      const shortages: string[] = [];
+      for (const line of order.lines) {
+        const required = parseFloat(line.quantityRequired);
+        if (required <= 0) continue;
+        const available = await this.stockService.getAvailable(
+          order.locationId,
+          line.componentItemId,
+          manager,
+          { forUpdate: true },
+        );
+        if (available < required) {
+          shortages.push(
+            `${this.formatItemLabel(line.componentItem)}: need ${this.fmtQty(required)}, available ${this.fmtQty(available)}`,
+          );
+        }
+      }
+      if (shortages.length) {
+        throw new BadRequestException(
+          shortages.length === 1
+            ? `Insufficient available stock to reserve: ${shortages[0]}`
+            : ['Insufficient available stock to reserve:', ...shortages],
+        );
+      }
+
+      for (const line of order.lines) {
+        const required = parseFloat(line.quantityRequired);
+        if (required <= 0) continue;
+        await this.stockService.reserve(
+          order.locationId,
+          line.componentItemId,
+          required,
+          manager,
+        );
+      }
+
+      order.status = ProductionOrderStatus.RELEASED;
+      order.releasedAt = new Date();
+      order.materialsReserved = true;
+      await orderRepo.save(order);
+    });
+
     return this.findOne(id);
   }
 
@@ -193,13 +285,6 @@ export class ProductionService {
         throw new BadRequestException('Nothing left to issue');
       }
 
-      const prepared: {
-        line: ProductionOrderLine;
-        quantity: number;
-        previous: number;
-      }[] = [];
-      const shortages: string[] = [];
-
       for (const issue of issues) {
         const line = order.lines.find(
           (l) => l.componentItemId === issue.componentItemId,
@@ -224,43 +309,57 @@ export class ProductionService {
           issue.componentItemId,
           manager,
         );
-        if (previous < issue.quantity) {
-          shortages.push(
-            `Insufficient stock for ${label}. Available: ${this.fmtQty(previous)}, requested: ${this.fmtQty(issue.quantity)}`,
-          );
-          continue;
-        }
-
-        prepared.push({ line, quantity: issue.quantity, previous });
-      }
-
-      if (shortages.length) {
-        throw new BadRequestException(
-          shortages.length === 1 ? shortages[0] : shortages,
+        const stock = await this.stockService.getStock(
+          order.locationId,
+          issue.componentItemId,
+          manager,
         );
-      }
+        const unitCost = stock ? parseFloat(stock.purchasePrice) : 0;
 
-      for (const row of prepared) {
-        await this.stockService.adjust(
-          {
-            locationId: order.locationId,
-            itemId: row.line.componentItemId,
-            quantityDelta: -row.quantity,
-            movement: {
+        if (order.materialsReserved) {
+          await this.stockService.consumeReserved(
+            order.locationId,
+            line.componentItemId,
+            issue.quantity,
+            manager,
+            {
               type: StockMovementType.PRODUCTION_ISSUE,
               refType: 'production_order',
               refId: order.id,
             },
-          },
-          manager,
-        );
-        row.line.quantityIssued = (
-          parseFloat(row.line.quantityIssued) + row.quantity
+          );
+        } else {
+          if (previous < issue.quantity) {
+            throw new BadRequestException(
+              `Insufficient stock for ${label}. Available: ${this.fmtQty(previous)}, requested: ${this.fmtQty(issue.quantity)}`,
+            );
+          }
+          await this.stockService.adjust(
+            {
+              locationId: order.locationId,
+              itemId: line.componentItemId,
+              quantityDelta: -issue.quantity,
+              movement: {
+                type: StockMovementType.PRODUCTION_ISSUE,
+                refType: 'production_order',
+                refId: order.id,
+              },
+            },
+            manager,
+          );
+        }
+
+        line.quantityIssued = (
+          parseFloat(line.quantityIssued) + issue.quantity
         ).toFixed(3);
+        line.issuedValue = (
+          parseFloat(line.issuedValue ?? '0') +
+          issue.quantity * unitCost
+        ).toFixed(2);
         stockChanges.push({
           locationId: order.locationId,
-          itemId: row.line.componentItemId,
-          previous: row.previous,
+          itemId: line.componentItemId,
+          previous,
         });
       }
 
@@ -313,14 +412,7 @@ export class ProductionService {
       }
 
       const ratio = dto.quantity / planned;
-
-      const autoIssues: {
-        line: ProductionOrderLine;
-        shortfall: number;
-        previous: number;
-      }[] = [];
-      const shortages: string[] = [];
-      const notIssued: string[] = [];
+      const receiptLocationId = order.finishedLocationId ?? order.locationId;
 
       for (const line of order.lines) {
         const label = this.formatItemLabel(line.componentItem);
@@ -330,85 +422,89 @@ export class ProductionService {
 
         if (shortfall > 1e-9) {
           if (!autoIssue) {
-            notIssued.push(
-              `Not enough ${label} has been issued. Need ${this.fmtQty(neededForThis)}, already issued ${this.fmtQty(issued)}`,
+            throw new BadRequestException(
+              `Not enough ${label} has been issued. Need ${this.fmtQty(neededForThis)}, already issued ${this.fmtQty(issued)}. Issue materials first or set autoIssue to true`,
             );
-            continue;
           }
+          const stock = await this.stockService.getStock(
+            order.locationId,
+            line.componentItemId,
+            manager,
+          );
+          const unitCost = stock ? parseFloat(stock.purchasePrice) : 0;
           const previous = await this.stockService.getQuantity(
             order.locationId,
             line.componentItemId,
             manager,
           );
-          if (previous < shortfall) {
-            shortages.push(
-              `Insufficient stock for ${label}. Available: ${this.fmtQty(previous)}, needed: ${this.fmtQty(shortfall)}`,
+
+          if (order.materialsReserved) {
+            await this.stockService.consumeReserved(
+              order.locationId,
+              line.componentItemId,
+              shortfall,
+              manager,
+              {
+                type: StockMovementType.PRODUCTION_ISSUE,
+                refType: 'production_order',
+                refId: order.id,
+                notes: 'Auto-issue on complete',
+              },
             );
-            continue;
+          } else {
+            if (previous < shortfall) {
+              throw new BadRequestException(
+                `Insufficient stock for ${label}. Available: ${this.fmtQty(previous)}, needed: ${this.fmtQty(shortfall)}`,
+              );
+            }
+            await this.stockService.adjust(
+              {
+                locationId: order.locationId,
+                itemId: line.componentItemId,
+                quantityDelta: -shortfall,
+                movement: {
+                  type: StockMovementType.PRODUCTION_ISSUE,
+                  refType: 'production_order',
+                  refId: order.id,
+                  notes: 'Auto-issue on complete',
+                },
+              },
+              manager,
+            );
           }
-          autoIssues.push({ line, shortfall, previous });
+          line.quantityIssued = (issued + shortfall).toFixed(3);
+          line.issuedValue = (
+            parseFloat(line.issuedValue ?? '0') +
+            shortfall * unitCost
+          ).toFixed(2);
+          stockChanges.push({
+            locationId: order.locationId,
+            itemId: line.componentItemId,
+            previous,
+          });
         }
       }
 
-      if (notIssued.length) {
-        throw new BadRequestException(
-          notIssued.length === 1
-            ? `${notIssued[0]}. Issue materials first or set autoIssue to true`
-            : [...notIssued, 'Issue materials first or set autoIssue to true'],
-        );
-      }
-      if (shortages.length) {
-        throw new BadRequestException(
-          shortages.length === 1 ? shortages[0] : shortages,
-        );
-      }
-
-      for (const row of autoIssues) {
-        await this.stockService.adjust(
-          {
-            locationId: order.locationId,
-            itemId: row.line.componentItemId,
-            quantityDelta: -row.shortfall,
-            movement: {
-              type: StockMovementType.PRODUCTION_ISSUE,
-              refType: 'production_order',
-              refId: order.id,
-              notes: 'Auto-issue on complete',
-            },
-          },
-          manager,
-        );
-        row.line.quantityIssued = (
-          parseFloat(row.line.quantityIssued) + row.shortfall
-        ).toFixed(3);
-        stockChanges.push({
-          locationId: order.locationId,
-          itemId: row.line.componentItemId,
-          previous: row.previous,
-        });
-      }
-
-      let unitCost = 0;
+      // Actual costing: allocate issued value proportional to this completion
+      let materialCost = 0;
       for (const line of order.lines) {
+        const issuedQty = parseFloat(line.quantityIssued);
+        const issuedVal = parseFloat(line.issuedValue ?? '0');
         const neededForThis = parseFloat(line.quantityRequired) * ratio;
-        const stock = await this.stockService.getStock(
-          order.locationId,
-          line.componentItemId,
-          manager,
-        );
-        const price = stock ? parseFloat(stock.purchasePrice) : 0;
-        unitCost += neededForThis * price;
+        if (issuedQty > 1e-9) {
+          materialCost += issuedVal * (neededForThis / issuedQty);
+        }
       }
-      const fgUnitCost = dto.quantity > 0 ? unitCost / dto.quantity : 0;
+      const fgUnitCost = dto.quantity > 0 ? materialCost / dto.quantity : 0;
 
       const fgPrevious = await this.stockService.getQuantity(
-        order.locationId,
+        receiptLocationId,
         order.finishedItemId,
         manager,
       );
       await this.stockService.adjust(
         {
-          locationId: order.locationId,
+          locationId: receiptLocationId,
           itemId: order.finishedItemId,
           quantityDelta: dto.quantity,
           purchasePrice: fgUnitCost,
@@ -416,26 +512,243 @@ export class ProductionService {
             type: StockMovementType.PRODUCTION_RECEIPT,
             refType: 'production_order',
             refId: order.id,
+            notes: `Actual material cost ${materialCost.toFixed(2)}`,
           },
         },
         manager,
       );
       stockChanges.push({
-        locationId: order.locationId,
+        locationId: receiptLocationId,
         itemId: order.finishedItemId,
         previous: fgPrevious,
       });
 
+      // Release leftover reservation for unused portion when fully complete
       const newCompleted = alreadyDone + dto.quantity;
+      const fullyDone = newCompleted >= planned - 1e-9;
+
+      if (fullyDone && order.materialsReserved) {
+        for (const line of order.lines) {
+          const reservedLeft =
+            parseFloat(line.quantityRequired) - parseFloat(line.quantityIssued);
+          if (reservedLeft > 1e-9) {
+            await this.stockService.releaseReservation(
+              order.locationId,
+              line.componentItemId,
+              reservedLeft,
+              manager,
+            );
+          }
+        }
+        order.materialsReserved = false;
+      }
+
       order.quantityCompleted = newCompleted.toFixed(3);
-      order.status =
-        newCompleted >= planned - 1e-9
-          ? ProductionOrderStatus.COMPLETED
-          : ProductionOrderStatus.IN_PROGRESS;
-      if (order.status === ProductionOrderStatus.COMPLETED) {
-        order.completedAt = new Date();
+      order.status = fullyDone
+        ? ProductionOrderStatus.COMPLETED
+        : ProductionOrderStatus.IN_PROGRESS;
+      if (fullyDone) order.completedAt = new Date();
+      await orderRepo.save(order);
+    });
+
+    for (const change of stockChanges) {
+      await this.lowStockService.evaluate(
+        change.locationId,
+        change.itemId,
+        change.previous,
+      );
+    }
+
+    return this.findOne(id);
+  }
+
+  /** Reverse completed FG and return proportional issued materials. */
+  async unbuild(id: string, dto: UnbuildProductionDto) {
+    const stockChanges: {
+      locationId: string;
+      itemId: string;
+      previous: number;
+    }[] = [];
+
+    await this.dataSource.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(ProductionOrder);
+      const order = await orderRepo.findOne({
+        where: { id },
+        relations: { lines: { componentItem: true } },
+      });
+      if (!order) throw new NotFoundException('Production order not found');
+      if (
+        order.status !== ProductionOrderStatus.COMPLETED &&
+        order.status !== ProductionOrderStatus.IN_PROGRESS
+      ) {
+        throw new BadRequestException(
+          'Only COMPLETED or IN_PROGRESS orders with finished goods can be unbuilt',
+        );
+      }
+
+      const completed = parseFloat(order.quantityCompleted);
+      if (dto.quantity > completed + 1e-9) {
+        throw new BadRequestException(
+          `Cannot unbuild more than completed. Completed: ${this.fmtQty(completed)}`,
+        );
+      }
+
+      const planned = parseFloat(order.quantityPlanned);
+      const ratio = dto.quantity / planned;
+      const receiptLocationId = order.finishedLocationId ?? order.locationId;
+
+      const fgPrevious = await this.stockService.getQuantity(
+        receiptLocationId,
+        order.finishedItemId,
+        manager,
+      );
+      if (fgPrevious < dto.quantity) {
+        throw new BadRequestException(
+          `Insufficient finished goods to unbuild. Available: ${this.fmtQty(fgPrevious)}`,
+        );
+      }
+      await this.stockService.adjust(
+        {
+          locationId: receiptLocationId,
+          itemId: order.finishedItemId,
+          quantityDelta: -dto.quantity,
+          movement: {
+            type: StockMovementType.PRODUCTION_REVERSE,
+            refType: 'production_order',
+            refId: order.id,
+            notes: dto.notes ?? 'Unbuild finished goods',
+          },
+        },
+        manager,
+      );
+      stockChanges.push({
+        locationId: receiptLocationId,
+        itemId: order.finishedItemId,
+        previous: fgPrevious,
+      });
+
+      for (const line of order.lines) {
+        const returnQty = parseFloat(line.quantityRequired) * ratio;
+        if (returnQty <= 1e-9) continue;
+        const issued = parseFloat(line.quantityIssued);
+        const take = Math.min(returnQty, issued);
+        if (take <= 1e-9) continue;
+
+        const avgCost =
+          issued > 0 ? parseFloat(line.issuedValue ?? '0') / issued : 0;
+        const previous = await this.stockService.getQuantity(
+          order.locationId,
+          line.componentItemId,
+          manager,
+        );
+        await this.stockService.adjust(
+          {
+            locationId: order.locationId,
+            itemId: line.componentItemId,
+            quantityDelta: take,
+            purchasePrice: avgCost || undefined,
+            movement: {
+              type: StockMovementType.PRODUCTION_REVERSE,
+              refType: 'production_order',
+              refId: order.id,
+              notes: dto.notes ?? 'Unbuild — return materials',
+            },
+          },
+          manager,
+        );
+        line.quantityIssued = (issued - take).toFixed(3);
+        line.issuedValue = Math.max(
+          0,
+          parseFloat(line.issuedValue ?? '0') - take * avgCost,
+        ).toFixed(2);
+        stockChanges.push({
+          locationId: order.locationId,
+          itemId: line.componentItemId,
+          previous,
+        });
+      }
+
+      order.quantityCompleted = (completed - dto.quantity).toFixed(3);
+      order.status = ProductionOrderStatus.IN_PROGRESS;
+      order.completedAt = null;
+      await orderRepo.save(order);
+    });
+
+    for (const change of stockChanges) {
+      await this.lowStockService.evaluate(
+        change.locationId,
+        change.itemId,
+        change.previous,
+      );
+    }
+
+    return this.findOne(id);
+  }
+
+  /** Scrap finished goods already produced (components stay consumed). */
+  async scrap(id: string, dto: ScrapProductionDto) {
+    const stockChanges: {
+      locationId: string;
+      itemId: string;
+      previous: number;
+    }[] = [];
+
+    await this.dataSource.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(ProductionOrder);
+      const order = await orderRepo.findOne({ where: { id } });
+      if (!order) throw new NotFoundException('Production order not found');
+
+      const completed = parseFloat(order.quantityCompleted);
+      if (dto.quantity > completed + 1e-9) {
+        throw new BadRequestException(
+          `Cannot scrap more than completed. Completed: ${this.fmtQty(completed)}`,
+        );
+      }
+
+      const receiptLocationId = order.finishedLocationId ?? order.locationId;
+      const previous = await this.stockService.getQuantity(
+        receiptLocationId,
+        order.finishedItemId,
+        manager,
+      );
+      if (previous < dto.quantity) {
+        throw new BadRequestException(
+          `Insufficient finished goods to scrap. Available: ${this.fmtQty(previous)}`,
+        );
+      }
+
+      await this.stockService.adjust(
+        {
+          locationId: receiptLocationId,
+          itemId: order.finishedItemId,
+          quantityDelta: -dto.quantity,
+          movement: {
+            type: StockMovementType.ADJUSTMENT,
+            refType: 'production_order',
+            refId: order.id,
+            notes: dto.notes ?? 'Production scrap',
+          },
+        },
+        manager,
+      );
+
+      order.quantityCompleted = (completed - dto.quantity).toFixed(3);
+      order.quantityScrapped = (
+        parseFloat(order.quantityScrapped ?? '0') + dto.quantity
+      ).toFixed(3);
+      if (
+        parseFloat(order.quantityCompleted) < 1e-9 &&
+        order.status === ProductionOrderStatus.COMPLETED
+      ) {
+        order.status = ProductionOrderStatus.IN_PROGRESS;
+        order.completedAt = null;
       }
       await orderRepo.save(order);
+      stockChanges.push({
+        locationId: receiptLocationId,
+        itemId: order.finishedItemId,
+        previous,
+      });
     });
 
     for (const change of stockChanges) {
@@ -468,45 +781,60 @@ export class ProductionService {
         order.status === ProductionOrderStatus.CANCELLED
       ) {
         throw new BadRequestException(
-          'Completed or cancelled orders cannot be cancelled',
+          'Completed or cancelled orders cannot be cancelled — use unbuild for finished goods',
         );
       }
       if (parseFloat(order.quantityCompleted) > 0) {
         throw new BadRequestException(
-          'Cannot cancel an order with completed finished goods; reverse via stock adjustment if needed',
+          'Cannot cancel an order with completed finished goods; use unbuild first',
         );
       }
 
       for (const line of order.lines) {
         const issued = parseFloat(line.quantityIssued);
-        if (issued <= 0) continue;
-        const previous = await this.stockService.getQuantity(
-          order.locationId,
-          line.componentItemId,
-          manager,
-        );
-        await this.stockService.adjust(
-          {
+        const required = parseFloat(line.quantityRequired);
+        const reservedLeft = order.materialsReserved ? required - issued : 0;
+
+        if (reservedLeft > 1e-9) {
+          await this.stockService.releaseReservation(
+            order.locationId,
+            line.componentItemId,
+            reservedLeft,
+            manager,
+          );
+        }
+
+        if (issued > 0) {
+          const previous = await this.stockService.getQuantity(
+            order.locationId,
+            line.componentItemId,
+            manager,
+          );
+          await this.stockService.adjust(
+            {
+              locationId: order.locationId,
+              itemId: line.componentItemId,
+              quantityDelta: issued,
+              movement: {
+                type: StockMovementType.PRODUCTION_REVERSE,
+                refType: 'production_order',
+                refId: order.id,
+                notes: 'Production order cancelled — return issued materials',
+              },
+            },
+            manager,
+          );
+          line.quantityIssued = '0.000';
+          line.issuedValue = '0.00';
+          stockChanges.push({
             locationId: order.locationId,
             itemId: line.componentItemId,
-            quantityDelta: issued,
-            movement: {
-              type: StockMovementType.PRODUCTION_REVERSE,
-              refType: 'production_order',
-              refId: order.id,
-              notes: 'Production order cancelled — return issued materials',
-            },
-          },
-          manager,
-        );
-        line.quantityIssued = '0.000';
-        stockChanges.push({
-          locationId: order.locationId,
-          itemId: line.componentItemId,
-          previous,
-        });
+            previous,
+          });
+        }
       }
 
+      order.materialsReserved = false;
       order.status = ProductionOrderStatus.CANCELLED;
       await orderRepo.save(order);
     });
@@ -520,6 +848,37 @@ export class ProductionService {
     }
 
     return this.findOne(id);
+  }
+
+  private assertBomEffective(bom: Bom) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (bom.effectiveFrom && bom.effectiveFrom > today) {
+      throw new BadRequestException(
+        `BOM is not yet effective (from ${bom.effectiveFrom})`,
+      );
+    }
+    if (bom.effectiveTo && bom.effectiveTo < today) {
+      throw new BadRequestException(
+        `BOM is no longer effective (to ${bom.effectiveTo})`,
+      );
+    }
+  }
+
+  private async nextOrderNumber(): Promise<string> {
+    const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `PO-${day}-`;
+    const latest = await this.orderRepo
+      .createQueryBuilder('po')
+      .where('po.order_number LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('po.order_number', 'DESC')
+      .getOne();
+    let seq = 1;
+    if (latest?.orderNumber) {
+      const tail = latest.orderNumber.slice(prefix.length);
+      const n = parseInt(tail, 10);
+      if (Number.isFinite(n)) seq = n + 1;
+    }
+    return `${prefix}${String(seq).padStart(4, '0')}`;
   }
 
   private formatItemLabel(

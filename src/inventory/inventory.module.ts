@@ -28,4 +28,3 @@ import { StockService } from './stock.service';
   exports: [StockService, InventoryService],
 })
 export class InventoryModule {}
-

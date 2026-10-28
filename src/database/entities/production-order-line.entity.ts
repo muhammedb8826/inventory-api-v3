@@ -43,6 +43,16 @@ export class ProductionOrderLine {
   })
   quantityIssued: string;
 
+  /** Cumulative inventory value of issued qty (for actual FG costing). */
+  @Column({
+    name: 'issued_value',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+  })
+  issuedValue: string;
+
   @ManyToOne(() => ProductionOrder, (order) => order.lines, {
     onDelete: 'CASCADE',
   })

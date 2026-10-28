@@ -42,10 +42,7 @@ export class StocktakesController {
 
   @Post()
   @RequirePermissions('stocktake.write')
-  create(
-    @Body() dto: CreateStocktakeDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
+  create(@Body() dto: CreateStocktakeDto, @CurrentUser() user: JwtPayload) {
     return this.stocktakesService.create(dto, user.sub);
   }
 

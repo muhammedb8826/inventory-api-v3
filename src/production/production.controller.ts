@@ -17,6 +17,8 @@ import {
   CreateProductionOrderDto,
   IssueProductionDto,
   ProductionOrderListQueryDto,
+  ScrapProductionDto,
+  UnbuildProductionDto,
 } from './dto/production-order.dto';
 import { ProductionService } from './production.service';
 
@@ -55,13 +57,25 @@ export class ProductionController {
   @Post(':id/issue')
   @RequirePermissions('production.write')
   issue(@Param('id') id: string, @Body() dto: IssueProductionDto) {
-    return this.productionService.issue(id, dto);
+    return this.productionService.issue(id, dto ?? {});
   }
 
   @Post(':id/complete')
   @RequirePermissions('production.write')
   complete(@Param('id') id: string, @Body() dto: CompleteProductionDto) {
     return this.productionService.complete(id, dto);
+  }
+
+  @Post(':id/unbuild')
+  @RequirePermissions('production.write')
+  unbuild(@Param('id') id: string, @Body() dto: UnbuildProductionDto) {
+    return this.productionService.unbuild(id, dto);
+  }
+
+  @Post(':id/scrap')
+  @RequirePermissions('production.write')
+  scrap(@Param('id') id: string, @Body() dto: ScrapProductionDto) {
+    return this.productionService.scrap(id, dto);
   }
 
   @Post(':id/cancel')

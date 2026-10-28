@@ -120,9 +120,9 @@ export class StocktakesService {
         line.countedQty = byItem.get(line.itemId)!.toFixed(3);
       }
     }
-    await this.stocktakeRepo.manager.getRepository(StocktakeLine).save(
-      session.lines ?? [],
-    );
+    await this.stocktakeRepo.manager
+      .getRepository(StocktakeLine)
+      .save(session.lines ?? []);
 
     session.status = StocktakeStatus.IN_PROGRESS;
     await this.stocktakeRepo.save(session);

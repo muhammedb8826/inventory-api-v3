@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsNumber,
   IsOptional,
   IsString,
@@ -66,6 +67,25 @@ export class CreateBomDto {
   @IsString()
   notes?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  @Max(1000)
+  yieldPercent?: number;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveTo?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -90,6 +110,12 @@ export class UpdateBomDto {
   @Allow()
   updatedAt?: unknown;
 
+  @Allow()
+  revisedFromId?: unknown;
+
+  @Allow()
+  revisedFrom?: unknown;
+
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -110,11 +136,73 @@ export class UpdateBomDto {
   isActive?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  @Max(1000)
+  yieldPercent?: number;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveFrom?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveTo?: string | null;
+
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => UpdateBomLineDto)
   lines?: UpdateBomLineDto[];
+}
+
+export class ReviseBomDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  version?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  @Max(1000)
+  yieldPercent?: number;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveTo?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => BomLineDto)
+  lines?: BomLineDto[];
 }
 
 export class BomListQueryDto extends ListQueryDto {
@@ -125,4 +213,23 @@ export class BomListQueryDto extends ListQueryDto {
   @IsOptional()
   @IsString()
   isActive?: string;
+
+  @IsOptional()
+  @IsString()
+  isDefault?: string;
+}
+
+export class BomExplodeQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantity?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(20)
+  maxDepth?: number;
 }

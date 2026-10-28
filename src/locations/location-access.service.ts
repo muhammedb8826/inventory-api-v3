@@ -26,9 +26,7 @@ export class LocationAccessService {
     });
     if (!user) return [];
 
-    const codes = new Set(
-      (user.role?.permissions ?? []).map((p) => p.code),
-    );
+    const codes = new Set((user.role?.permissions ?? []).map((p) => p.code));
     if (codes.has('locations.all')) return null;
 
     const rows = await this.userLocationRepo.find({ where: { userId } });
@@ -65,10 +63,7 @@ export class LocationAccessService {
     return filtered;
   }
 
-  async setUserLocations(
-    userId: string,
-    locationIds: string[],
-  ): Promise<void> {
+  async setUserLocations(userId: string, locationIds: string[]): Promise<void> {
     await this.userLocationRepo.delete({ userId });
     if (locationIds.length === 0) return;
     await this.userLocationRepo.save(

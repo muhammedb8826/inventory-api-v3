@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BomsModule } from '../boms/boms.module';
 import { Bom } from '../database/entities/bom.entity';
 import { Item } from '../database/entities/item.entity';
 import { Location } from '../database/entities/location.entity';
@@ -21,6 +22,7 @@ import { ProductionService } from './production.service';
     ]),
     InventoryModule,
     NotificationsModule,
+    BomsModule,
   ],
   controllers: [ProductionController],
   providers: [ProductionService],

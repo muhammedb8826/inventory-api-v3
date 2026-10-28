@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class P2ReservationsTransfersBarcodeIdempotency1749060000000
-  implements MigrationInterface
-{
+export class P2ReservationsTransfersBarcodeIdempotency1749060000000 implements MigrationInterface {
   name = 'P2ReservationsTransfersBarcodeIdempotency1749060000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
