@@ -32,7 +32,10 @@ export class CreateProductionOrderDto {
   @Min(0.001)
   quantityPlanned: number;
 
-  /** Flatten multi-level BOM to leaf components (default true). */
+  /**
+   * If true, flatten SEMI/FINISHED components to leaf RAW (ignore stocked semis).
+   * Default false: issue BOM lines as written (e.g. consume Seat/Back stock).
+   */
   @IsOptional()
   @IsBoolean()
   explodeBom?: boolean;

@@ -130,7 +130,9 @@ export class ProductionService {
       }
     }
 
-    const explode = dto.explodeBom !== false;
+    // Default: use BOM lines as written (stocked SEMIs like Seat/Back).
+    // explodeBom=true flattens through SEMI BOMs to RAW (phantom / MRP style).
+    const explode = dto.explodeBom === true;
     let lineSpecs: { componentItemId: string; quantityRequired: number }[];
     if (explode) {
       lineSpecs = await this.bomsService.explodeForProduction(
@@ -151,7 +153,7 @@ export class ProductionService {
     }
 
     if (!lineSpecs.length) {
-      throw new BadRequestException('Exploded BOM has no leaf components');
+      throw new BadRequestException('BOM has no component requirements');
     }
 
     const orderNumber = await this.nextOrderNumber();
