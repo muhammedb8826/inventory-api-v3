@@ -13,7 +13,6 @@
     "target": "ES2023",
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
@@ -22,7 +21,5 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "test", "dist", "scripts", "**/*spec.ts"]
+  }
 }
