@@ -439,7 +439,7 @@ scripts/create-database.ts
 
 **CI** (`.github/workflows/ci.yml`) runs lint → build → unit → migrate → e2e on every PR/push.
 
-**Deploy** is the `deploy` job in the same workflow: after `quality` succeeds on a **push to `main`/`master`** (not on PRs), it FTP-uploads a **`dist/` + `package.json`** bundle. Manual redeploy: Actions → “Deploy VGATE API to cPanel via FTP” → Run workflow.
+**Deploy** is the `deploy` job in the same workflow: after `quality` succeeds on a **push to `main`/`master`** (not on PRs), it builds on CI and FTP-mirrors the app (including `dist/`, `src/`, configs). `node_modules`, `uploads/`, `.env`, and logs are excluded so cPanel data is not wiped. Manual redeploy: Actions → “Deploy VGATE API to cPanel via FTP” → Run workflow.
 
 **GitHub secrets (VGATE)**
 
@@ -448,21 +448,22 @@ scripts/create-database.ts
 | `FTP_SERVER_VGATE` | `ftp.yourdomain.com` |
 | `FTP_USERNAME_VGATE` | cPanel FTP user |
 | `FTP_PASSWORD_VGATE` | FTP password |
-| `CPANEL_DIR_VGATE` | `inventory-api/` — path **relative to FTP home**, must end with `/` |
+| `CPANEL_DIR_VGATE` | `api.vgatefurnishing.com/` — path **relative to FTP home**, must end with `/` |
 
 **Before first deploy**
 
 1. In cPanel **File Manager**, create the folder matching `CPANEL_DIR_VGATE`.
-2. In **Setup Node.js App**, set application root to that folder, startup file **`dist/main.js`**, Node 20.
-3. After FTP upload: **Run NPM Install** (`npm ci --omit=dev`), then **post-deploy migrate** (SSH or cPanel terminal). Prefer compiled JS (no `ts-node`):
+2. In **Setup Node.js App**, set application root to that folder, startup file **`dist/main.js`**, Node 20+.
+3. After FTP upload: **Run NPM Install** in cPanel (or `npm install` over SSH), then migrate and restart:
 
 ```bash
 NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run:prod
+mkdir -p tmp && touch tmp/restart.txt
 ```
 
-4. **Restart** the Node app. Startup file: **`dist/main.js`**. Set env: `NODE_ENV=production`, `DB_SYNCHRONIZE=false`, `DB_*`, `JWT_*`, `PORT`, `CORS_ORIGIN`, `DB_SEED=false`.
+4. Env: `NODE_ENV=production`, `DB_SYNCHRONIZE=false`, `DB_*`, `JWT_*`, `PORT`, `CORS_ORIGIN`, `DB_SEED=false`.
 
-FTP error `553 Can't open that file` usually means `CPANEL_DIR_VGATE` is wrong or the folder does not exist on the server.
+FTP `553 Can't open that file` on **replace** usually means remote `dist/` folders were deleted while the FTP sync state still expected them. CI now clears remote `dist/` + `.ftp-deploy-sync-state.json` before upload. Do not point a second FTP client at the same tree with “delete extras” while CI deploy runs.
 
 ## Production checklist
 

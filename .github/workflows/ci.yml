@@ -88,27 +88,45 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Prepare deploy bundle (dist + package manifests)
+      # Thin "deploy/" bundles break cPanel: FTP-Deploy mirrors local-dir and deletes
+      # server files not in the bundle (full src/, etc.), then 553 on replace under dist/.
+      - name: Reset stale FTP sync state on server
         run: |
-          rm -rf deploy
-          mkdir -p deploy
-          cp package.json package-lock.json deploy/
-          cp -r dist deploy/dist
-          # Optional TS migrate path (entities import ../../common/enums)
-          mkdir -p deploy/src/database deploy/src/common
-          cp -r src/database/migrations deploy/src/database/migrations
-          cp -r src/database/entities deploy/src/database/entities
-          cp src/database/data-source.ts deploy/src/database/
-          cp -r src/database/constants deploy/src/database/constants 2>/dev/null || true
-          cp -r src/common/enums deploy/src/common/enums
-          cp tsconfig.json nest-cli.json deploy/
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp
+          lftp -c "
+            set ssl:verify-certificate no;
+            set ftp:passive-mode true;
+            open -u '${{ secrets.FTP_USERNAME_VGATE }}','${{ secrets.FTP_PASSWORD_VGATE }}' ${{ secrets.FTP_SERVER_VGATE }};
+            cd ${{ secrets.CPANEL_DIR_VGATE }};
+            rm -f .ftp-deploy-sync-state.json;
+            rm -r -f dist;
+            bye
+          "
 
-      - name: Deploy runtime bundle to cPanel via FTP
+      - name: Deploy app to cPanel via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER_VGATE }}
           username: ${{ secrets.FTP_USERNAME_VGATE }}
           password: ${{ secrets.FTP_PASSWORD_VGATE }}
           server-dir: ${{ secrets.CPANEL_DIR_VGATE }}
-          local-dir: deploy/
+          local-dir: ./
           protocol: ftp
+          exclude: |
+            **/.git/**
+            **/.git*/**
+            **/.github/**
+            **/node_modules/**
+            **/uploads/**
+            **/tmp/**
+            **/coverage/**
+            **/.nyc_output/**
+            **/.env
+            **/.env.*
+            **/*.log
+            **/stderr.log
+            **/stdout.log
+            **/deploy/**
+            **/.cursor/**
+            **/agent-transcripts/**
