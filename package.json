@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && node -e \"const fs=require('fs');if(!fs.existsSync('dist/main.js')){console.error('Build incomplete: dist/main.js missing');process.exit(1)} console.log('dist/main.js OK')\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
