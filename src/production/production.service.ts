@@ -374,87 +374,89 @@ export class ProductionService {
     }[] = [];
     let shortageLocationId: string | null = null;
 
-    await this.dataSource.transaction(async (manager) => {
-      const orderRepo = manager.getRepository(ProductionOrder);
-      await orderRepo
-        .createQueryBuilder('document')
-        .where('document.id = :id', { id })
-        .setLock('pessimistic_write')
-        .getOne();
-      const order = await orderRepo.findOne({
-        where: { id },
-        relations: { lines: { componentItem: true } },
-      });
-      if (!order) throw new NotFoundException('Production order not found');
-      if (order.status !== ProductionOrderStatus.DRAFT) {
-        throw new BadRequestException('Only DRAFT orders can be released');
-      }
+    await this.dataSource
+      .transaction(async (manager) => {
+        const orderRepo = manager.getRepository(ProductionOrder);
+        await orderRepo
+          .createQueryBuilder('document')
+          .where('document.id = :id', { id })
+          .setLock('pessimistic_write')
+          .getOne();
+        const order = await orderRepo.findOne({
+          where: { id },
+          relations: { lines: { componentItem: true } },
+        });/
+        if (!order) throw new NotFoundException('Production order not found');
+        if (order.status !== ProductionOrderStatus.DRAFT) {
+          throw new BadRequestException('Only DRAFT orders can be released');
+        }
 
-      const shortages: string[] = [];
-      const details: typeof shortageDetails = [];
-      for (const line of order.lines) {
-        const required = parseFloat(line.quantityRequired);
-        if (required <= 0) continue;
-        const available = await this.stockService.getAvailable(
-          order.locationId,
-          line.componentItemId,
-          manager,
-          { forUpdate: true },
-        );
-        if (available < required) {
-          const shortQty = required - available;
-          shortages.push(
-            `${this.formatItemLabel(line.componentItem)}: need ${this.fmtQty(required)}, available ${this.fmtQty(available)}`,
+        const shortages: string[] = [];
+        const details: typeof shortageDetails = [];
+        for (const line of order.lines) {
+          const required = parseFloat(line.quantityRequired);
+          if (required <= 0) continue;
+          const available = await this.stockService.getAvailable(
+            order.locationId,
+            line.componentItemId,
+            manager,
+            { forUpdate: true },
           );
-          details.push({
-            componentItemId: line.componentItemId,
-            sku: line.componentItem?.sku ?? null,
-            description: line.componentItem?.description ?? null,
-            shortageQty: shortQty.toFixed(3),
+          if (available < required) {
+            const shortQty = required - available;
+            shortages.push(
+              `${this.formatItemLabel(line.componentItem)}: need ${this.fmtQty(required)}, available ${this.fmtQty(available)}`,
+            );
+            details.push({
+              componentItemId: line.componentItemId,
+              sku: line.componentItem?.sku ?? null,
+              description: line.componentItem?.description ?? null,
+              shortageQty: shortQty.toFixed(3),
+            });
+          }
+        }
+        if (shortages.length) {
+          shortageLabels = shortages;
+          shortageDetails = details;
+          shortageLocationId = order.locationId;
+          throw new BadRequestException(
+            shortages.length === 1
+              ? `Insufficient available stock to reserve: ${shortages[0]}`
+              : ['Insufficient available stock to reserve:', ...shortages],
+          );
+        }
+
+        for (const line of order.lines) {
+          const required = parseFloat(line.quantityRequired);
+          if (required <= 0) continue;
+          await this.stockService.reserve(
+            order.locationId,
+            line.componentItemId,
+            required,
+            manager,
+          );
+        }
+
+        order.status = ProductionOrderStatus.RELEASED;
+        order.releasedAt = new Date();
+        order.materialsReserved = true;
+        await orderRepo.save(order);
+      })
+      .catch(async (err) => {
+        if (shortageLabels.length) {
+          const draft = await this.findOne(id).catch(() => null);
+          await this.notifications.onProductionMaterialShortage({
+            productionOrderId: id,
+            orderNumber: draft?.orderNumber ?? null,
+            shortages: shortageLabels,
+            shortagesDetailed: shortageDetails,
+            locationId: shortageLocationId ?? draft?.locationId ?? null,
+            actorUserId: actorUserId ?? null,
+            inquiryId: draft?.inquiryId ?? null,
           });
         }
-      }
-      if (shortages.length) {
-        shortageLabels = shortages;
-        shortageDetails = details;
-        shortageLocationId = order.locationId;
-        throw new BadRequestException(
-          shortages.length === 1
-            ? `Insufficient available stock to reserve: ${shortages[0]}`
-            : ['Insufficient available stock to reserve:', ...shortages],
-        );
-      }
-
-      for (const line of order.lines) {
-        const required = parseFloat(line.quantityRequired);
-        if (required <= 0) continue;
-        await this.stockService.reserve(
-          order.locationId,
-          line.componentItemId,
-          required,
-          manager,
-        );
-      }
-
-      order.status = ProductionOrderStatus.RELEASED;
-      order.releasedAt = new Date();
-      order.materialsReserved = true;
-      await orderRepo.save(order);
-    }).catch(async (err) => {
-      if (shortageLabels.length) {
-        const draft = await this.findOne(id).catch(() => null);
-        await this.notifications.onProductionMaterialShortage({
-          productionOrderId: id,
-          orderNumber: draft?.orderNumber ?? null,
-          shortages: shortageLabels,
-          shortagesDetailed: shortageDetails,
-          locationId: shortageLocationId ?? draft?.locationId ?? null,
-          actorUserId: actorUserId ?? null,
-          inquiryId: draft?.inquiryId ?? null,
-        });
-      }
-      throw err;
-    });
+        throw err;
+      });
 
     const released = await this.findOne(id);
     await this.notifications.onProductionReleased({

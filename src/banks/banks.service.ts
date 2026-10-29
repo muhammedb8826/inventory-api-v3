@@ -138,7 +138,10 @@ export class BanksService {
   async updateAccount(id: string, dto: UpdateBankAccountDto) {
     const account = await this.findAccount(id);
     if (dto.name !== undefined) account.name = dto.name;
-    if (dto.accountType !== undefined && dto.accountType !== account.accountType) {
+    if (
+      dto.accountType !== undefined &&
+      dto.accountType !== account.accountType
+    ) {
       const txCount = await this.txRepo.count({
         where: { bankAccountId: id },
       });
