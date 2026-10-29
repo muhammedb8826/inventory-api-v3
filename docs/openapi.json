@@ -769,6 +769,29 @@
         ]
       }
     },
+    "/api/v1/users/{id}/deactivate": {
+      "post": {
+        "operationId": "UsersController_deactivate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
     "/api/v1/locations": {
       "get": {
         "operationId": "LocationsController_findAll",
@@ -2937,6 +2960,29 @@
         ]
       }
     },
+    "/api/v1/production-orders/{id}/material-requirements": {
+      "get": {
+        "operationId": "ProductionController_materialRequirements",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Production"
+        ]
+      }
+    },
     "/api/v1/production-orders/{id}": {
       "get": {
         "operationId": "ProductionController_findOne",
@@ -3032,6 +3078,7 @@
             }
           }
         },
+        "summary": "Warehouse issue — production.write or dedicated production.issue.",
         "tags": [
           "Production"
         ]
@@ -4368,6 +4415,37 @@
         ]
       }
     },
+    "/api/v1/inquiries/{id}/confirm": {
+      "post": {
+        "operationId": "InquiriesController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerInquiry"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Firm demand: mark inquiry as QUOTED so production can plan against it.",
+        "tags": [
+          "Inquiries"
+        ]
+      }
+    },
     "/api/v1/public/inquiries": {
       "post": {
         "operationId": "PublicInquiriesController_create",
@@ -4818,6 +4896,87 @@
         },
         "responses": {
           "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccount"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Banks"
+        ]
+      },
+      "delete": {
+        "operationId": "BanksController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Banks"
+        ]
+      }
+    },
+    "/api/v1/banks/accounts/{id}/deactivate": {
+      "post": {
+        "operationId": "BanksController_deactivate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccount"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Banks"
+        ]
+      }
+    },
+    "/api/v1/banks/accounts/{id}/activate": {
+      "post": {
+        "operationId": "BanksController_activate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
             "description": "",
             "content": {
               "application/json": {
