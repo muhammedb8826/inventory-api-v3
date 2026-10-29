@@ -943,6 +943,16 @@ export class SalesService {
           `Cannot convert inquiry in status ${inquiry.status}`,
         );
       }
+      // Stock sale (no production link) requires firm demand.
+      if (
+        !productionOrderId &&
+        inquiry.status !== InquiryStatus.QUOTED &&
+        inquiry.status !== InquiryStatus.IN_PROGRESS
+      ) {
+        throw new BadRequestException(
+          'Confirm the inquiry quote before converting to a sale from stock',
+        );
+      }
       customerId = inquiry.customerId;
     }
 
