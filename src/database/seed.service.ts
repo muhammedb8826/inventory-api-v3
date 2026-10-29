@@ -124,6 +124,29 @@ export class SeedService implements OnModuleInit {
         }),
       ]);
       this.logger.log('Default bank accounts created (Main Bank, Cash)');
+    } else {
+      // Ensure an active cash till exists (CASH purchases require accountType CASH).
+      const cashTill = await this.bankRepo.findOne({
+        where: { accountType: BankAccountType.CASH },
+      });
+      if (!cashTill) {
+        await this.bankRepo.save(
+          this.bankRepo.create({
+            name: 'Cash',
+            accountType: BankAccountType.CASH,
+            bankName: null,
+            accountHolderName: 'Main Account',
+            accountNumber: 'CASH-001',
+            balance: '0',
+            isActive: true,
+          }),
+        );
+        this.logger.log('Default Cash till created');
+      } else if (!cashTill.isActive) {
+        cashTill.isActive = true;
+        await this.bankRepo.save(cashTill);
+        this.logger.log('Default Cash till reactivated');
+      }
     }
 
     this.logger.log('Seeding complete');

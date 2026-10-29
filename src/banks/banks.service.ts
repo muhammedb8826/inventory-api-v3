@@ -138,14 +138,88 @@ export class BanksService {
   async updateAccount(id: string, dto: UpdateBankAccountDto) {
     const account = await this.findAccount(id);
     if (dto.name !== undefined) account.name = dto.name;
-    if (dto.accountType !== undefined) account.accountType = dto.accountType;
+    if (dto.accountType !== undefined && dto.accountType !== account.accountType) {
+      const txCount = await this.txRepo.count({
+        where: { bankAccountId: id },
+      });
+      if (txCount > 0) {
+        throw new BadRequestException(
+          'Cannot change account type after ledger activity — create a new account instead',
+        );
+      }
+      account.accountType = dto.accountType;
+    }
     if (dto.bankName !== undefined) account.bankName = dto.bankName;
     if (dto.accountHolderName !== undefined)
       account.accountHolderName = dto.accountHolderName;
     if (dto.accountNumber !== undefined)
       account.accountNumber = dto.accountNumber;
-    if (dto.isActive !== undefined) account.isActive = dto.isActive;
+    if (dto.isActive !== undefined) {
+      if (dto.isActive === false) {
+        await this.assertCanDeactivate(account);
+      }
+      account.isActive = dto.isActive;
+    }
     return this.accountRepo.save(account);
+  }
+
+  /** Soft-close: hide from payment pickers; keep ledger history. */
+  async deactivate(id: string) {
+    const account = await this.findAccount(id);
+    if (!account.isActive) return account;
+    await this.assertCanDeactivate(account);
+    account.isActive = false;
+    return this.accountRepo.save(account);
+  }
+
+  async activate(id: string) {
+    const account = await this.findAccount(id);
+    account.isActive = true;
+    return this.accountRepo.save(account);
+  }
+
+  /**
+   * Hard delete only when unused (industry: archive if ledger exists).
+   * Requires zero balance and no bank_transactions rows.
+   */
+  async remove(id: string) {
+    const account = await this.findAccount(id);
+    const balance = parseFloat(account.balance ?? '0');
+    if (Number.isFinite(balance) && Math.abs(balance) > 0.001) {
+      throw new BadRequestException(
+        'Account balance must be zero before delete. Post an adjustment or deactivate instead.',
+      );
+    }
+    const txCount = await this.txRepo.count({
+      where: { bankAccountId: id },
+    });
+    if (txCount > 0) {
+      throw new BadRequestException(
+        'Account has ledger history and cannot be deleted. Deactivate it instead.',
+      );
+    }
+    await this.assertCanDeactivate(account);
+    await this.accountRepo.delete(id);
+    return { deleted: true, id };
+  }
+
+  /** Keep at least one active cash till for CASH sales/purchases. */
+  private async assertCanDeactivate(account: BankAccount) {
+    if (account.accountType !== BankAccountType.CASH || !account.isActive) {
+      return;
+    }
+    const otherActiveCash = await this.accountRepo.count({
+      where: {
+        accountType: BankAccountType.CASH,
+        isActive: true,
+      },
+    });
+    // count includes this account when still active
+    if (otherActiveCash <= 1) {
+      throw new BadRequestException(
+        'Cannot remove the last active cash till. Create another CASH account first.',
+      );
+    }
   }
 
   /**

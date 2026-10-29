@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -61,6 +62,24 @@ export class BanksController {
   @RequirePermissions('bank.write')
   updateAccount(@Param('id') id: string, @Body() dto: UpdateBankAccountDto) {
     return this.service.updateAccount(id, dto);
+  }
+
+  @Post('accounts/:id/deactivate')
+  @RequirePermissions('bank.write')
+  deactivate(@Param('id') id: string) {
+    return this.service.deactivate(id);
+  }
+
+  @Post('accounts/:id/activate')
+  @RequirePermissions('bank.write')
+  activate(@Param('id') id: string) {
+    return this.service.activate(id);
+  }
+
+  @Delete('accounts/:id')
+  @RequirePermissions('bank.write')
+  remove(@Param('id') id: string) {
+    return this.service.remove(id);
   }
 
   @Get('transactions')

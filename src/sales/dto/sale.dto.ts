@@ -14,6 +14,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaymentMethod, CommissionBasis } from '../../common/enums';
+import { EmptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { resolveLineItemIdFromPayload } from '../../common/utils/line-item-id.util';
 
 export class SaleLineDto {
@@ -44,16 +45,19 @@ export class SaleLineDto {
 
 export class CreateSaleDto {
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   customerId?: string;
 
   /** Close the MTO loop: sale from this inquiry. */
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   inquiryId?: string;
 
   /** Prefer FG from this completed production order. */
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   productionOrderId?: string;
 
@@ -64,6 +68,7 @@ export class CreateSaleDto {
   paymentMethod: PaymentMethod;
 
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   bankAccountId?: string;
 
@@ -80,6 +85,7 @@ export class CreateSaleDto {
   creditDueDate?: string;
 
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   soldByUserId?: string;
 

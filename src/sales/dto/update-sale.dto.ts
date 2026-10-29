@@ -14,14 +14,17 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaymentMethod, CommissionBasis } from '../../common/enums';
+import { EmptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { SaleLineDto } from './sale.dto';
 
 export class UpdateSaleDto {
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   customerId?: string;
 
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   locationId?: string;
 
@@ -30,6 +33,7 @@ export class UpdateSaleDto {
   paymentMethod?: PaymentMethod;
 
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   bankAccountId?: string;
 
@@ -46,6 +50,7 @@ export class UpdateSaleDto {
   creditDueDate?: string;
 
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   soldByUserId?: string;
 

@@ -194,6 +194,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'credit.read',
     'credit.write',
     'bank.read',
+    'bank.write', // create cash till / bank account from purchase form
     'inventory.read',
     'production.read',
     'locations.read',

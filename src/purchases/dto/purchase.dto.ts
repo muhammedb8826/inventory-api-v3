@@ -12,6 +12,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaymentMethod } from '../../common/enums';
+import { EmptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { resolveLineItemIdFromPayload } from '../../common/utils/line-item-id.util';
 
 export class PurchaseLineDto {
@@ -54,6 +55,7 @@ export class CreatePurchaseDto {
   paymentMethod: PaymentMethod;
 
   @IsOptional()
+  @EmptyToUndefined()
   @IsUUID()
   bankAccountId?: string;
 
