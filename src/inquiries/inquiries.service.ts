@@ -483,6 +483,42 @@ export class InquiriesService {
     return this.findOne(id);
   }
 
+  /**
+   * Firm demand (quoted → accepted): sales confirms the quote so production
+   * can plan against it. Sets status to QUOTED.
+   */
+  async confirm(id: string, actorUserId: string) {
+    const row = await this.findOne(id);
+    if (
+      row.status === InquiryStatus.CANCELLED ||
+      row.status === InquiryStatus.CLOSED ||
+      row.status === InquiryStatus.CONVERTED
+    ) {
+      throw new BadRequestException(
+        `Cannot confirm inquiry in status ${row.status}`,
+      );
+    }
+    if (row.assignmentStatus === InquiryAssignmentStatus.PENDING) {
+      throw new BadRequestException(
+        'Accept the inquiry assignment before confirming the quote',
+      );
+    }
+    if (row.status === InquiryStatus.QUOTED) {
+      return row;
+    }
+
+    row.status = InquiryStatus.QUOTED;
+    const { lines: _lines, ...header } = row;
+    await this.repo.save(header);
+
+    await this.notifications.onInquiryConfirmed({
+      ...this.inquiryNotifyPayload(row),
+      actorUserId,
+    });
+
+    return this.findOne(id);
+  }
+
   /** Pull from the unassigned pool (industry claim / self-assign). */
   async claim(id: string, userId: string) {
     const row = await this.findOne(id);

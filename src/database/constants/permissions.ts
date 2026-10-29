@@ -36,7 +36,12 @@ export const PERMISSION_DEFINITIONS = [
   },
   {
     code: 'production.write',
-    name: 'Manage production orders',
+    name: 'Manage production orders (create, release, complete)',
+    module: 'production',
+  },
+  {
+    code: 'production.issue',
+    name: 'Issue materials to production orders',
     module: 'production',
   },
   {
@@ -122,6 +127,14 @@ export const PERMISSION_DEFINITIONS = [
   },
 ] as const;
 
+/**
+ * Industry MTO roles:
+ * - Sales Representative — inquiry / quote / confirm / invoice
+ * - Production Manager — PO draft, release/reserve, complete FG
+ * - Warehouse Operator — issue components + warehouse stock moves
+ * - Purchaser — buy when material requirements are short
+ * - Stock Keeper — broader warehouse+BOM for small shops
+ */
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   Admin: PERMISSION_DEFINITIONS.map((p) => p.code),
   'Sales Representative': [
@@ -131,6 +144,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'customers.write',
     'inquiries.read',
     'inquiries.write',
+    'production.read',
     'bank.read',
     'bank.write',
     'credit.read',
@@ -143,6 +157,35 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'messages.read',
     'messages.write',
   ],
+  'Production Manager': [
+    'production.read',
+    'production.write',
+    'production.issue',
+    'bom.read',
+    'bom.write',
+    'inventory.read',
+    'inquiries.read',
+    'inquiries.write', // accept assignment + confirm firm demand before starting PO
+    'stock_transfer.read',
+    'locations.read',
+    'dashboard.read',
+    'messages.read',
+    'messages.write',
+  ],
+  'Warehouse Operator': [
+    'inventory.read',
+    'inventory.write',
+    'inventory.adjust',
+    'stocktake.read',
+    'stocktake.write',
+    'production.read',
+    'production.issue',
+    'stock_transfer.read',
+    'stock_transfer.write',
+    'locations.read',
+    'messages.read',
+    'messages.write',
+  ],
   Purchaser: [
     'purchase.read',
     'purchase.write',
@@ -152,6 +195,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'credit.write',
     'bank.read',
     'inventory.read',
+    'production.read',
     'locations.read',
     'messages.read',
     'messages.write',
@@ -167,6 +211,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'bom.write',
     'production.read',
     'production.write',
+    'production.issue',
     'stock_transfer.read',
     'stock_transfer.write',
     'locations.read',

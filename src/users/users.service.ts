@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import {
   applyIlikeSearch,
   paginatedQueryBuilder,
@@ -111,6 +111,9 @@ export class UsersService {
 
     if (Object.keys(patch).length > 0) {
       await this.userRepo.update(id, patch);
+      if (dto.isActive === false) {
+        await this.userRepo.increment({ id }, 'sessionVersion', 1);
+      }
     }
     if (dto.locationIds !== undefined) {
       await this.locationAccess.setUserLocations(id, dto.locationIds);
@@ -118,14 +121,42 @@ export class UsersService {
     return this.findOne(id);
   }
 
-  async remove(id: string) {
-    const user = await this.userRepo.findOne({
-      where: { id },
-      relations: { role: { permissions: true } },
-    });
-    if (!user) throw new NotFoundException('User not found');
-    user.isActive = false;
-    await this.userRepo.save(user);
+  /** Soft-disable login; keeps audit / transaction history. */
+  async deactivate(id: string, actorUserId?: string) {
+    if (actorUserId && id === actorUserId) {
+      throw new BadRequestException('You cannot deactivate your own account');
+    }
+    await this.findOne(id);
+    await this.userRepo.update(id, { isActive: false });
+    await this.userRepo.increment({ id }, 'sessionVersion', 1);
     return this.findOne(id);
+  }
+
+  /**
+   * Permanently delete a user. Fails if they still own transactional history
+   * (sales, stock moves, etc.) — deactivate instead in that case.
+   */
+  async remove(id: string, actorUserId?: string) {
+    if (actorUserId && id === actorUserId) {
+      throw new BadRequestException('You cannot delete your own account');
+    }
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+
+    try {
+      await this.userRepo.delete(id);
+    } catch (err) {
+      if (
+        err instanceof QueryFailedError &&
+        (err as QueryFailedError & { code?: string }).code === '23503'
+      ) {
+        throw new BadRequestException(
+          'This user has transaction history and cannot be deleted. Deactivate them instead.',
+        );
+      }
+      throw err;
+    }
+
+    return { deleted: true, id };
   }
 }

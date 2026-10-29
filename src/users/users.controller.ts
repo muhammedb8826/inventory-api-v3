@@ -9,6 +9,8 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import {
   RequireAnyPermissions,
   RequirePermissions,
@@ -65,9 +67,15 @@ export class UsersController {
     return this.usersService.update(id, dto);
   }
 
+  @Post(':id/deactivate')
+  @RequirePermissions('users.write')
+  deactivate(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.usersService.deactivate(id, user.sub);
+  }
+
   @Delete(':id')
   @RequirePermissions('users.write')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+  remove(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.usersService.remove(id, user.sub);
   }
 }

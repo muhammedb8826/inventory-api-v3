@@ -446,6 +446,35 @@ export class NotificationsService {
     );
   }
 
+  /** Production planners: firm demand confirmed — create / plan a work order. */
+  async onInquiryConfirmed(params: {
+    inquiryId: string;
+    subject: string;
+    contactName: string;
+    source: string;
+    priority?: string;
+    actorUserId: string;
+  }) {
+    const exclude = [params.actorUserId];
+    const notice = {
+      module: 'inquiries' as const,
+      type: NotificationType.INQUIRY,
+      title: 'Inquiry confirmed — firm demand',
+      message: `"${params.subject}" is quoted/accepted and ready for production planning`,
+      entityType: 'inquiry',
+      entityId: params.inquiryId,
+      metadata: {
+        subject: params.subject,
+        contactName: params.contactName,
+        source: params.source,
+        priority: params.priority ?? 'NORMAL',
+        event: 'confirmed',
+      },
+    };
+    await this.notifyUsersWithPermission('production.write', notice, exclude);
+    await this.notifyUsersWithPermission('production.read', notice, exclude);
+  }
+
   /** Warehouse / production: materials reserved — issue stock for the PO. */
   async onProductionReleased(params: {
     productionOrderId: string;
@@ -458,19 +487,55 @@ export class NotificationsService {
     const label = params.orderNumber
       ? `PO ${params.orderNumber}`
       : 'Production order';
+    const notice = {
+      module: 'production' as const,
+      type: NotificationType.SYSTEM,
+      title: 'Issue materials for production',
+      message: `${label}: issue components for ${params.quantityPlanned} × ${params.finishedItemLabel}`,
+      entityType: 'production_order',
+      entityId: params.productionOrderId,
+      metadata: {
+        event: 'released',
+        orderNumber: params.orderNumber ?? null,
+        inquiryId: params.inquiryId ?? null,
+      },
+    };
+    const exclude = params.actorUserId ? [params.actorUserId] : [];
+    await this.notifyUsersWithPermission('production.issue', notice, exclude);
+    await this.notifyUsersWithPermission('production.write', notice, exclude);
+  }
+
+  /** Purchasing: BOM material list short at release — buy or transfer. */
+  async onProductionMaterialShortage(params: {
+    productionOrderId: string;
+    orderNumber?: string | null;
+    shortages: string[];
+    actorUserId?: string | null;
+    inquiryId?: string | null;
+  }) {
+    if (!params.shortages.length) return;
+    const label = params.orderNumber
+      ? `PO ${params.orderNumber}`
+      : 'Production order';
+    const preview = params.shortages.slice(0, 3).join('; ');
+    const extra =
+      params.shortages.length > 3
+        ? ` (+${params.shortages.length - 3} more)`
+        : '';
     await this.notifyUsersWithPermission(
-      'production.write',
+      'purchase.write',
       {
-        module: 'production',
-        type: NotificationType.SYSTEM,
-        title: 'Issue materials for production',
-        message: `${label}: issue components for ${params.quantityPlanned} × ${params.finishedItemLabel}`,
+        module: 'purchase',
+        type: NotificationType.PURCHASE,
+        title: 'Material shortage for production',
+        message: `${label} cannot reserve stock: ${preview}${extra}`,
         entityType: 'production_order',
         entityId: params.productionOrderId,
         metadata: {
-          event: 'released',
+          event: 'material_shortage',
           orderNumber: params.orderNumber ?? null,
           inquiryId: params.inquiryId ?? null,
+          shortages: params.shortages,
         },
       },
       params.actorUserId ? [params.actorUserId] : [],

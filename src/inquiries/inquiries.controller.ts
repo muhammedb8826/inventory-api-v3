@@ -72,6 +72,13 @@ export class InquiriesController {
     return this.service.claim(id, user.sub);
   }
 
+  /** Firm demand: mark inquiry as QUOTED so production can plan against it. */
+  @Post(':id/confirm')
+  @RequirePermissions('inquiries.write')
+  confirm(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.service.confirm(id, user.sub);
+  }
+
   @Delete(':id')
   @RequirePermissions('inquiries.write')
   remove(@Param('id') id: string) {

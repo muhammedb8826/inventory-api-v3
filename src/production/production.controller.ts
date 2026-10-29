@@ -9,7 +9,10 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
-import { RequirePermissions } from '../common/decorators/permissions.decorator';
+import {
+  RequireAnyPermissions,
+  RequirePermissions,
+} from '../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import {
@@ -43,6 +46,12 @@ export class ProductionController {
     return this.productionService.createFromInquiry(dto, user.sub);
   }
 
+  @Get(':id/material-requirements')
+  @RequirePermissions('production.read')
+  materialRequirements(@Param('id') id: string) {
+    return this.productionService.materialRequirements(id);
+  }
+
   @Get(':id')
   @RequirePermissions('production.read')
   findOne(@Param('id') id: string) {
@@ -64,8 +73,9 @@ export class ProductionController {
     return this.productionService.release(id, user.sub);
   }
 
+  /** Warehouse issue — production.write or dedicated production.issue. */
   @Post(':id/issue')
-  @RequirePermissions('production.write')
+  @RequireAnyPermissions('production.write', 'production.issue')
   issue(@Param('id') id: string, @Body() dto: IssueProductionDto) {
     return this.productionService.issue(id, dto ?? {});
   }

@@ -218,7 +218,8 @@ export class ProductionService {
   }
 
   /**
-   * Start production from an accepted inquiry: resolve item + default BOM.
+   * Start production from a firm-demand inquiry (QUOTED / IN_PROGRESS):
+   * resolve item + default BOM → DRAFT work order.
    */
   async createFromInquiry(dto: StartProductionFromInquiryDto, userId?: string) {
     const inquiry = await this.inquiryRepo.findOne({
@@ -233,6 +234,16 @@ export class ProductionService {
     ) {
       throw new BadRequestException(
         `Cannot start production for inquiry in status ${inquiry.status}`,
+      );
+    }
+    // Industry: plan production against firm demand (QUOTED). IN_PROGRESS is
+    // allowed so a second work order can be opened while the first runs.
+    if (
+      inquiry.status !== InquiryStatus.QUOTED &&
+      inquiry.status !== InquiryStatus.IN_PROGRESS
+    ) {
+      throw new BadRequestException(
+        'Confirm the inquiry quote (firm demand) before starting production',
       );
     }
     if (
@@ -295,7 +306,67 @@ export class ProductionService {
     );
   }
 
+  /**
+   * BOM material list for the job: required vs on-hand / available / shortage.
+   * Used by planners before Release and by warehouse before Issue.
+   */
+  async materialRequirements(id: string) {
+    const order = await this.orderRepo.findOne({
+      where: { id },
+      relations: { lines: { componentItem: true }, location: true },
+    });
+    if (!order) throw new NotFoundException('Production order not found');
+
+    const lines = [];
+    for (const line of order.lines ?? []) {
+      const required = parseFloat(line.quantityRequired);
+      const issued = parseFloat(line.quantityIssued ?? '0');
+      const remaining = Math.max(0, required - issued);
+      const onHand = await this.stockService.getQuantity(
+        order.locationId,
+        line.componentItemId,
+      );
+      const available = await this.stockService.getAvailable(
+        order.locationId,
+        line.componentItemId,
+      );
+      const reservedForOrder =
+        order.materialsReserved && remaining > 0 ? remaining : 0;
+      const shortage =
+        order.status === ProductionOrderStatus.DRAFT
+          ? Math.max(0, required - available)
+          : Math.max(0, remaining - available - reservedForOrder);
+
+      lines.push({
+        componentItemId: line.componentItemId,
+        sku: line.componentItem?.sku ?? null,
+        description: line.componentItem?.description ?? null,
+        quantityRequired: required.toFixed(3),
+        quantityIssued: issued.toFixed(3),
+        quantityRemaining: remaining.toFixed(3),
+        onHand: onHand.toFixed(3),
+        available: available.toFixed(3),
+        reservedForOrder: reservedForOrder.toFixed(3),
+        shortage: shortage.toFixed(3),
+      });
+    }
+
+    const hasShortages = lines.some((l) => parseFloat(l.shortage) > 0);
+    return {
+      productionOrderId: order.id,
+      orderNumber: order.orderNumber,
+      locationId: order.locationId,
+      locationName: order.location?.name ?? null,
+      status: order.status,
+      materialsReserved: order.materialsReserved,
+      hasShortages,
+      lines,
+    };
+  }
+
   async release(id: string, actorUserId?: string) {
+    let shortageLabels: string[] = [];
+
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
       await orderRepo
@@ -329,6 +400,7 @@ export class ProductionService {
         }
       }
       if (shortages.length) {
+        shortageLabels = shortages;
         throw new BadRequestException(
           shortages.length === 1
             ? `Insufficient available stock to reserve: ${shortages[0]}`
@@ -351,6 +423,18 @@ export class ProductionService {
       order.releasedAt = new Date();
       order.materialsReserved = true;
       await orderRepo.save(order);
+    }).catch(async (err) => {
+      if (shortageLabels.length) {
+        const draft = await this.findOne(id).catch(() => null);
+        await this.notifications.onProductionMaterialShortage({
+          productionOrderId: id,
+          orderNumber: draft?.orderNumber ?? null,
+          shortages: shortageLabels,
+          actorUserId: actorUserId ?? null,
+          inquiryId: draft?.inquiryId ?? null,
+        });
+      }
+      throw err;
     });
 
     const released = await this.findOne(id);
