@@ -385,7 +385,7 @@ export class ProductionService {
         const order = await orderRepo.findOne({
           where: { id },
           relations: { lines: { componentItem: true } },
-        });/
+        });
         if (!order) throw new NotFoundException('Production order not found');
         if (order.status !== ProductionOrderStatus.DRAFT) {
           throw new BadRequestException('Only DRAFT orders can be released');
