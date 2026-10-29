@@ -505,11 +505,18 @@ export class NotificationsService {
     await this.notifyUsersWithPermission('production.write', notice, exclude);
   }
 
-  /** Purchasing: BOM material list short at release — buy or transfer. */
+  /** Purchasing: BOM material list short at release — create purchase. */
   async onProductionMaterialShortage(params: {
     productionOrderId: string;
     orderNumber?: string | null;
     shortages: string[];
+    shortagesDetailed?: {
+      componentItemId: string;
+      sku?: string | null;
+      description?: string | null;
+      shortageQty: string;
+    }[];
+    locationId?: string | null;
     actorUserId?: string | null;
     inquiryId?: string | null;
   }) {
@@ -535,7 +542,10 @@ export class NotificationsService {
           event: 'material_shortage',
           orderNumber: params.orderNumber ?? null,
           inquiryId: params.inquiryId ?? null,
+          locationId: params.locationId ?? null,
           shortages: params.shortages,
+          shortagesDetailed: params.shortagesDetailed ?? [],
+          purchaseHref: `/purchases/new?productionOrderId=${encodeURIComponent(params.productionOrderId)}`,
         },
       },
       params.actorUserId ? [params.actorUserId] : [],

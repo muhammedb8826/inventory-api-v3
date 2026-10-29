@@ -366,6 +366,13 @@ export class ProductionService {
 
   async release(id: string, actorUserId?: string) {
     let shortageLabels: string[] = [];
+    let shortageDetails: {
+      componentItemId: string;
+      sku?: string | null;
+      description?: string | null;
+      shortageQty: string;
+    }[] = [];
+    let shortageLocationId: string | null = null;
 
     await this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(ProductionOrder);
@@ -384,6 +391,7 @@ export class ProductionService {
       }
 
       const shortages: string[] = [];
+      const details: typeof shortageDetails = [];
       for (const line of order.lines) {
         const required = parseFloat(line.quantityRequired);
         if (required <= 0) continue;
@@ -394,13 +402,22 @@ export class ProductionService {
           { forUpdate: true },
         );
         if (available < required) {
+          const shortQty = required - available;
           shortages.push(
             `${this.formatItemLabel(line.componentItem)}: need ${this.fmtQty(required)}, available ${this.fmtQty(available)}`,
           );
+          details.push({
+            componentItemId: line.componentItemId,
+            sku: line.componentItem?.sku ?? null,
+            description: line.componentItem?.description ?? null,
+            shortageQty: shortQty.toFixed(3),
+          });
         }
       }
       if (shortages.length) {
         shortageLabels = shortages;
+        shortageDetails = details;
+        shortageLocationId = order.locationId;
         throw new BadRequestException(
           shortages.length === 1
             ? `Insufficient available stock to reserve: ${shortages[0]}`
@@ -430,6 +447,8 @@ export class ProductionService {
           productionOrderId: id,
           orderNumber: draft?.orderNumber ?? null,
           shortages: shortageLabels,
+          shortagesDetailed: shortageDetails,
+          locationId: shortageLocationId ?? draft?.locationId ?? null,
           actorUserId: actorUserId ?? null,
           inquiryId: draft?.inquiryId ?? null,
         });
