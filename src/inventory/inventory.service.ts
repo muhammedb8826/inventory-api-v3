@@ -1,3 +1,5 @@
+import { UnitsService } from '../units/units.service';
+import { assertUnitQuantity } from '../units/unit-quantity';
 import { applyLocationScope } from '../common/location-scope';
 import {
   BadRequestException,
@@ -72,6 +74,7 @@ export class InventoryService {
   private readonly itemUploadDir = join(process.cwd(), 'uploads', 'items');
 
   constructor(
+    private readonly units: UnitsService,
     @InjectRepository(StockLevel)
     private readonly stockRepo: Repository<StockLevel>,
     @InjectRepository(Item)
@@ -142,6 +145,7 @@ export class InventoryService {
         filteredQb
           .clone()
           .leftJoinAndSelect('stock.item', 'item')
+          .leftJoinAndSelect('item.stockUnit', 'stockUnit')
           .leftJoinAndSelect('stock.location', 'location')
           .orderBy('stock.updated_at', 'DESC'),
         query.page,
@@ -212,6 +216,7 @@ export class InventoryService {
     const qb = this.stockRepo
       .createQueryBuilder('stock')
       .leftJoinAndSelect('stock.item', 'item')
+      .leftJoinAndSelect('item.stockUnit', 'stockUnit')
       .leftJoinAndSelect('stock.location', 'location')
       .where('(item.barcode = :code OR item.sku = :code)', { code: trimmed })
       .andWhere('item.is_active = true');
@@ -258,6 +263,14 @@ export class InventoryService {
     if (!item && barcode) {
       item = await this.itemRepo.findOne({ where: { barcode } });
     }
+    const unit = await this.units.resolve(dto.unitId, dto.unit);
+    assertUnitQuantity(unit, dto.quantity);
+    if (dto.reorderPoint != null)
+      assertUnitQuantity(unit, dto.reorderPoint, 'Reorder point');
+    if (item && item.unitId !== unit.id)
+      throw new BadRequestException(
+        'Selected unit does not match this existing item stock unit',
+      );
     if (!item) {
       try {
         item = await this.itemRepo.save(
@@ -265,7 +278,8 @@ export class InventoryService {
             sku,
             barcode,
             description: dto.description,
-            unit: dto.unit ?? null,
+            unitId: unit.id,
+            unit: unit.symbol,
             itemType: dto.itemType,
             isPhantom: dto.isPhantom === true,
           }),
@@ -304,6 +318,10 @@ export class InventoryService {
       }
     }
 
+    if (item.unitId !== unit.id)
+      throw new BadRequestException(
+        'Selected unit does not match the existing item',
+      );
     const adjusted = await this.stockService.adjust({
       locationId: dto.locationId,
       itemId: item.id,
@@ -334,6 +352,7 @@ export class InventoryService {
       dto.sku !== undefined ||
       dto.barcode !== undefined ||
       dto.unit !== undefined ||
+      dto.unitId !== undefined ||
       dto.itemType !== undefined ||
       dto.isPhantom !== undefined;
 
@@ -375,9 +394,15 @@ export class InventoryService {
         }
         stock.item.barcode = barcode;
       }
-      if (dto.unit !== undefined) {
-        stock.item.unit =
-          dto.unit === null || dto.unit.trim() === '' ? null : dto.unit.trim();
+      if (dto.unit !== undefined || dto.unitId !== undefined) {
+        if (dto.unitId === stock.item.unitId && dto.unit === undefined) {
+          /* Existing legacy units may be retained while editing metadata. */
+        } else {
+          const unit = await this.units.resolve(dto.unitId, dto.unit);
+          stock.item.unitId = unit.id;
+          stock.item.stockUnit = unit;
+          stock.item.unit = unit.symbol;
+        }
       }
       if (dto.itemType !== undefined) {
         stock.item.itemType = dto.itemType;
@@ -402,6 +427,12 @@ export class InventoryService {
       }
     }
 
+    if (dto.reorderPoint != null)
+      assertUnitQuantity(
+        stock.item.stockUnit,
+        dto.reorderPoint,
+        'Reorder point',
+      );
     if (dto.purchasePrice !== undefined) {
       stock.purchasePrice = dto.purchasePrice.toFixed(2);
     }

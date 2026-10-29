@@ -1,3 +1,4 @@
+import { UnitsModule } from './units/units.module';
 import { ApiThrottlerGuard } from './common/guards/api-throttler.guard';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -88,6 +89,7 @@ import { UsersModule } from './users/users.module';
     LocationsModule,
     NotificationsModule,
     MessagesModule,
+    UnitsModule,
     InventoryModule,
     BomsModule,
     ProductionModule,

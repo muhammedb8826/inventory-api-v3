@@ -131,6 +131,7 @@ describe('Inventory API smoke (e2e)', () => {
         .set(auth)
         .send({
           description: 'E2E Widget',
+          unit: 'pcs',
           sku,
           locationId,
           quantity: openingQty,
@@ -211,6 +212,21 @@ describe('Inventory API smoke (e2e)', () => {
         Authorization: `Bearer ${limitedLogin.body.accessToken}`,
       };
 
+      await request(app.getHttpServer())
+        .get(`${API}/units`)
+        .set(limitedAuth)
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`${API}/units`)
+        .set(limitedAuth)
+        .send({
+          code: 'DENIED',
+          name: 'Denied',
+          symbol: 'x',
+          category: 'COUNT',
+          decimalPlaces: 0,
+        })
+        .expect(403);
       await request(app.getHttpServer())
         .post(`${API}/inventory`)
         .set(limitedAuth)

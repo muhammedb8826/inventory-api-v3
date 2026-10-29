@@ -26,7 +26,7 @@ export class CreateStockAdjustmentDto {
   direction: StockAdjustmentDirection;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity: number;
 

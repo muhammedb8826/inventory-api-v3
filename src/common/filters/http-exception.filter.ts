@@ -21,6 +21,30 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       (request.headers['x-request-id'] as string | undefined) ||
       undefined;
 
+    if (
+      (exception as { driverError?: { constraint?: string } })?.driverError
+        ?.constraint === 'stock_unit_precision'
+    ) {
+      response.status(400).json({
+        statusCode: 400,
+        message:
+          'Quantity must match the item stock unit precision. Whole units cannot have fractional quantities.',
+        requestId,
+      });
+      return;
+    }
+    if (
+      (exception as { driverError?: { constraint?: string } })?.driverError
+        ?.constraint === 'item_stock_unit_locked'
+    ) {
+      response.status(400).json({
+        statusCode: 400,
+        message:
+          'Stock unit cannot change after inventory history or documents exist. Create a new item for a different base unit.',
+        requestId,
+      });
+      return;
+    }
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const body = exception.getResponse();

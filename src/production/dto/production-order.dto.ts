@@ -28,7 +28,7 @@ export class CreateProductionOrderDto {
   finishedLocationId?: string;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantityPlanned: number;
 
@@ -80,7 +80,7 @@ export class StartProductionFromInquiryDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantityPlanned?: number;
 
@@ -98,7 +98,7 @@ export class IssueProductionLineDto {
   componentItemId: string;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity: number;
 }
@@ -114,7 +114,7 @@ export class IssueProductionDto {
 
 export class CompleteProductionDto {
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity: number;
 
@@ -126,7 +126,7 @@ export class CompleteProductionDto {
 
 export class UnbuildProductionDto {
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity: number;
 
@@ -137,7 +137,7 @@ export class UnbuildProductionDto {
 
 export class ScrapProductionDto {
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity: number;
 

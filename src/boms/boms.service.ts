@@ -1,3 +1,4 @@
+import { assertUnitQuantity } from '../units/unit-quantity';
 import {
   BadRequestException,
   Injectable,
@@ -614,6 +615,11 @@ export class BomsService {
           `Component item not found: ${line.componentItemId}`,
         );
       }
+      assertUnitQuantity(
+        component.stockUnit,
+        line.quantity,
+        'BOM component quantity',
+      );
       if (!component.isActive) {
         throw new BadRequestException(
           `Component item is inactive: ${component.description}`,

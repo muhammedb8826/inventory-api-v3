@@ -1,3 +1,4 @@
+import { assertUnitQuantity } from '../units/unit-quantity';
 import {
   BadRequestException,
   ForbiddenException,
@@ -115,6 +116,8 @@ export class InquiriesService {
       if (!item) {
         throw new BadRequestException(`Item not found: ${line.itemId}`);
       }
+      if (line.quantity !== undefined)
+        assertUnitQuantity(item.stockUnit, line.quantity, 'Inquiry quantity');
       if (!item.isActive) {
         throw new BadRequestException(
           `Item is inactive: ${item.description ?? line.itemId}`,

@@ -510,3 +510,7 @@ Deferred for a later pass: lots/serials (P2-4), cycle counts (P2-5), location-sc
 ## License
 
 UNLICENSED — private project.
+
+## Structured units of measure
+
+See [unit catalog and rollout](docs/UNITS_OF_MEASURE.md) before deploying this upgrade. Run the new migration before restarting the API.

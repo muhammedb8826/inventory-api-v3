@@ -22,7 +22,7 @@ export class BomLineDto {
   componentItemId: string;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity: number;
 
@@ -227,7 +227,7 @@ export class BomListQueryDto extends ListQueryDto {
 export class BomExplodeQueryDto {
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity?: number;
 

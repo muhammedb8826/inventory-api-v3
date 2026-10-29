@@ -125,6 +125,16 @@ export class StocktakesService {
         )
       )
         throw new BadRequestException('Stocktake is not open for counting');
+      const knownItems = new Set(session.lines.map((line) => line.itemId));
+      for (const line of dto.lines) {
+        if (!knownItems.has(line.itemId))
+          throw new BadRequestException('Item is not in this stocktake');
+        await this.stockService.assertQuantity(
+          line.itemId,
+          line.countedQty,
+          manager,
+        );
+      }
       const byItem = new Map(
         dto.lines.map((line) => [line.itemId, line.countedQty]),
       );

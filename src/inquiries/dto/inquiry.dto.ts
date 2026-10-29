@@ -29,7 +29,7 @@ export class InquiryLineDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity?: number;
 

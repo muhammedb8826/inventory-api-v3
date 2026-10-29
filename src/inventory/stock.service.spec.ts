@@ -63,6 +63,7 @@ describe('StockService', () => {
         return {
           id: where.id,
           description: 'Widget',
+          stockUnit: { symbol: 'kg', decimalPlaces: 3 },
           sku: 'W1',
         } as Item;
       }),

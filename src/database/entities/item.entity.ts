@@ -1,9 +1,12 @@
+import { UnitOfMeasure } from './unit-of-measure.entity';
 import {
   Column,
   CreateDateColumn,
   Entity,
   Index,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { ItemType } from '../../common/enums';
@@ -31,6 +34,14 @@ export class Item extends UuidBaseEntity {
   @Column({ type: 'text' })
   description: string;
 
+  @Column({ name: 'unit_id', type: 'uuid' })
+  unitId: string;
+
+  @ManyToOne(() => UnitOfMeasure, { eager: true, nullable: false })
+  @JoinColumn({ name: 'unit_id' })
+  stockUnit: UnitOfMeasure;
+
+  /** Compatibility display symbol; stockUnit is the authoritative definition. */
   @Column({ type: 'varchar', length: 40, nullable: true })
   unit: string | null;
 

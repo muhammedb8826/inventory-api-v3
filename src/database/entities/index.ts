@@ -1,3 +1,5 @@
+export { UnitOfMeasure } from './unit-of-measure.entity';
+import { UnitOfMeasure } from './unit-of-measure.entity';
 export { Permission } from './permission.entity';
 export { Role } from './role.entity';
 export { User } from './user.entity';
@@ -79,6 +81,7 @@ import { StockLot } from './stock-lot.entity';
 import { UserLocation } from './user-location.entity';
 
 export const entities = [
+  UnitOfMeasure,
   Permission,
   Role,
   User,

@@ -26,7 +26,7 @@ export class PurchaseLineDto {
   itemId: string;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity: number;
 

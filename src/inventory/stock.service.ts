@@ -1,3 +1,4 @@
+import { assertUnitQuantity } from '../units/unit-quantity';
 import { randomUUID } from 'crypto';
 import { applyLocationScope } from '../common/location-scope';
 import { BadRequestException, Injectable } from '@nestjs/common';
@@ -45,6 +46,19 @@ export class StockService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {}
+
+  async assertQuantity(
+    itemId: string,
+    quantity: number | string,
+    manager?: EntityManager,
+  ) {
+    const catalogItem = await this.repos(manager).item.findOne({
+      where: { id: itemId },
+    });
+    if (!catalogItem) throw new BadRequestException('Item not found');
+    assertUnitQuantity(catalogItem.stockUnit, quantity);
+    return catalogItem;
+  }
 
   private repos(manager?: EntityManager) {
     return {
@@ -121,6 +135,7 @@ export class StockService {
     if (quantity <= 0) {
       throw new BadRequestException('Reserve quantity must be positive');
     }
+    await this.assertQuantity(itemId, quantity, manager);
     const { stock } = this.repos(manager);
     const row = await this.getOrCreateLocked(locationId, itemId, manager);
     const available =
@@ -149,6 +164,7 @@ export class StockService {
     if (quantity <= 0) {
       throw new BadRequestException('Release quantity must be positive');
     }
+    await this.assertQuantity(itemId, quantity, manager);
     const { stock } = this.repos(manager);
     const row = await this.getOrCreateLocked(locationId, itemId, manager);
     const reserved = parseFloat(row.reserved ?? '0');
@@ -213,6 +229,7 @@ export class StockService {
     const { stock, item, movement } = this.repos(manager);
     const catalogItem = await item.findOne({ where: { id: adj.itemId } });
     if (!catalogItem) throw new BadRequestException('Item not found');
+    assertUnitQuantity(catalogItem.stockUnit, adj.quantityDelta);
 
     const row = await this.getOrCreateLocked(
       adj.locationId,
@@ -640,6 +657,7 @@ export class StockService {
       a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0,
     );
     for (const line of ordered) {
+      await this.assertQuantity(line.itemId, line.quantity, manager);
       const available = await this.getAvailable(
         locationId,
         line.itemId,

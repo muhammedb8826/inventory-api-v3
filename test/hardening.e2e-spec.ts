@@ -69,6 +69,7 @@ describe('Production invariants (isolated PostgreSQL)', () => {
     itemId = (
       await db.getRepository(Item).save(
         db.getRepository(Item).create({
+          unitId: '10000000-0000-4000-8000-000000000001',
           description: 'Concurrency widget',
           sku: `H-${randomUUID()}`,
         }),
@@ -148,6 +149,7 @@ describe('Production invariants (isolated PostgreSQL)', () => {
   it('handles concurrent first receipts in a single stock row', async () => {
     const item = await db.getRepository(Item).save(
       db.getRepository(Item).create({
+        unitId: '10000000-0000-4000-8000-000000000001',
         description: 'New concurrent SKU',
         sku: `H-${randomUUID()}`,
       }),
@@ -230,13 +232,13 @@ describe('Production invariants (isolated PostgreSQL)', () => {
     await expect(sales.void(sale.id)).rejects.toThrow('Sales with returns');
   });
   it('retains every lot allocation and preserves lots on transfer', async () => {
-    const lotItem = await db
-      .getRepository(Item)
-      .save(
-        db
-          .getRepository(Item)
-          .create({ description: 'Batch widget', sku: `L-${randomUUID()}` }),
-      );
+    const lotItem = await db.getRepository(Item).save(
+      db.getRepository(Item).create({
+        unitId: '10000000-0000-4000-8000-000000000001',
+        description: 'Batch widget',
+        sku: `L-${randomUUID()}`,
+      }),
+    );
     const destination = await db
       .getRepository(Location)
       .save(
@@ -277,6 +279,7 @@ describe('Production invariants (isolated PostgreSQL)', () => {
   it('restores original batch allocations on a customer return', async () => {
     const item = await db.getRepository(Item).save(
       db.getRepository(Item).create({
+        unitId: '10000000-0000-4000-8000-000000000001',
         description: 'Returned batch widget',
         sku: `R-${randomUUID()}`,
       }),
@@ -375,6 +378,10 @@ describe('Production invariants (isolated PostgreSQL)', () => {
       .send({ email, password: 'ScopePassword123!' })
       .expect(201);
     const scopedToken = auth.body.accessToken as string;
+    await request(app.getHttpServer())
+      .get('/api/v1/units')
+      .auth(scopedToken, { type: 'bearer' })
+      .expect(200);
     const empty = await request(app.getHttpServer())
       .get('/api/v1/inventory')
       .auth(scopedToken, { type: 'bearer' })

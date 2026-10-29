@@ -23,7 +23,7 @@ export class StocktakeCountLineDto {
   @IsUUID()
   itemId: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   countedQty: number;
 }

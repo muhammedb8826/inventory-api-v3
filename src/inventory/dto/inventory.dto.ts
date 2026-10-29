@@ -27,7 +27,7 @@ export class CreateInventoryDto {
   locationId: string;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   quantity: number;
 
@@ -41,6 +41,10 @@ export class CreateInventoryDto {
   unit?: string;
 
   @IsOptional()
+  @IsUUID()
+  unitId?: string;
+
+  @IsOptional()
   @IsEnum(ItemType)
   itemType?: ItemType;
 
@@ -51,7 +55,7 @@ export class CreateInventoryDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   reorderPoint?: number;
 }
@@ -77,6 +81,10 @@ export class UpdateInventoryDto {
   unit?: string | null;
 
   @IsOptional()
+  @IsUUID()
+  unitId?: string;
+
+  @IsOptional()
   @IsEnum(ItemType)
   itemType?: ItemType;
 
@@ -93,7 +101,7 @@ export class UpdateInventoryDto {
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   reorderPoint?: number | null;
 }

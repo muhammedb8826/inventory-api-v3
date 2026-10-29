@@ -139,6 +139,10 @@ export class ProductionService {
       throw new BadRequestException('BOM has no component lines');
     }
     this.assertBomEffective(bom);
+    await this.stockService.assertQuantity(
+      bom.finishedItemId,
+      dto.quantityPlanned,
+    );
 
     const location = await this.locationRepo.findOne({
       where: { id: dto.locationId },
@@ -168,6 +172,11 @@ export class ProductionService {
       dto.explodeBom === true,
     );
 
+    for (const spec of lineSpecs)
+      await this.stockService.assertQuantity(
+        spec.componentItemId,
+        spec.quantityRequired,
+      );
     if (!lineSpecs.length) {
       throw new BadRequestException('BOM has no component requirements');
     }
