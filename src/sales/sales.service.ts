@@ -1,3 +1,4 @@
+import { CustomerInquiryLine } from '../database/entities/customer-inquiry-line.entity';
 import Decimal from 'decimal.js';
 import { assertUnitQuantity } from '../units/unit-quantity';
 import {
@@ -746,8 +747,41 @@ export class SalesService {
     }
 
     const result = await this.dataSource.transaction(async (manager) => {
+      if (mtoLinks.inquiryId)
+        await manager.query(
+          'SELECT id FROM customer_inquiries WHERE id=$1 FOR UPDATE',
+          [mtoLinks.inquiryId],
+        );
+      if (mtoLinks.productionOrderId)
+        await manager.query(
+          'SELECT id FROM production_orders WHERE id=$1 FOR UPDATE',
+          [mtoLinks.productionOrderId],
+        );
+      const lockedLinks = await this.resolveMtoLinks(dto, manager);
+      if (lockedLinks.customerId !== mtoLinks.customerId)
+        throw new BadRequestException(
+          'The inquiry customer changed. Reload before creating the sale.',
+        );
       const normalizedLines = await Promise.all(
-        dto.lines.map((line) => normalizeLine(manager, line.itemId, line)),
+        dto.lines.map(async (line) => {
+          const source = mtoLinks.inquiryId
+            ? await manager.getRepository(CustomerInquiryLine).findOneBy({
+                inquiryId: mtoLinks.inquiryId,
+                itemId: line.itemId,
+                ...(line.inquiryLineId ? { id: line.inquiryLineId } : {}),
+              })
+            : null;
+          if (line.inquiryLineId && !source)
+            throw new BadRequestException(
+              'The inquiry products have changed. Reload the inquiry before creating the sale.',
+            );
+          return normalizeLine(
+            manager,
+            line.itemId,
+            line,
+            source?.unitSnapshot,
+          );
+        }),
       );
       if (paysViaBank && dto.bankAccountId) {
         await this.banksService.assertPaymentAccount(
@@ -922,7 +956,10 @@ export class SalesService {
   /**
    * Resolve optional MTO links (inquiry / completed production) for a sale.
    */
-  private async resolveMtoLinks(dto: CreateSaleDto): Promise<{
+  private async resolveMtoLinks(
+    dto: CreateSaleDto,
+    manager?: EntityManager,
+  ): Promise<{
     inquiryId: string | null;
     productionOrderId: string | null;
     customerId: string | null;
@@ -932,7 +969,9 @@ export class SalesService {
     let customerId: string | null = null;
 
     if (productionOrderId) {
-      const order = await this.productionOrderRepo.findOne({
+      const order = await (
+        manager?.getRepository(ProductionOrder) ?? this.productionOrderRepo
+      ).findOne({
         where: { id: productionOrderId },
       });
       if (!order) {
@@ -952,11 +991,16 @@ export class SalesService {
     }
 
     if (inquiryId) {
-      const inquiry = await this.inquiryRepo.findOne({
+      const inquiry = await (
+        manager?.getRepository(CustomerInquiry) ?? this.inquiryRepo
+      ).findOne({
         where: { id: inquiryId },
       });
       if (!inquiry) throw new BadRequestException('Inquiry not found');
-      if (inquiry.status === InquiryStatus.CONVERTED) {
+      if (
+        inquiry.convertedSaleId ||
+        inquiry.status === InquiryStatus.CONVERTED
+      ) {
         throw new BadRequestException('Inquiry already converted to a sale');
       }
       if (

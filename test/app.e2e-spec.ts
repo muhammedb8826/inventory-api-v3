@@ -311,7 +311,17 @@ describe('Inventory API smoke (e2e)', () => {
         .patch(`${API}/units/items/${itemId}`)
         .set(auth)
         .send({ conversions: [{ unitId: id('M'), factor: 2 }] })
-        .expect(400);
+        .expect(200);
+      const customOptions = await request(server)
+        .get(`${API}/units/items/${itemId}`)
+        .set(auth)
+        .expect(200);
+      expect(
+        customOptions.body.options.find(
+          (o: { unit: { id: string } }) => o.unit.id === id('M'),
+        ).factor,
+      ).toBe('2');
+      await settings(12).expect(200);
       const purchase = (
         await request(server)
           .post(`${API}/purchases`)
@@ -448,7 +458,12 @@ describe('Inventory API smoke (e2e)', () => {
         .patch(`${API}/units/items/${mass.itemId}`)
         .set(auth)
         .send({ conversions: [{ unitId: id('G'), factor: 2 }] })
-        .expect(400);
+        .expect(200);
+      await request(server)
+        .patch(`${API}/units/items/${mass.itemId}`)
+        .set(auth)
+        .send({ conversions: [] })
+        .expect(200);
       const areaStock = (
         await request(server)
           .post(`${API}/inventory`)

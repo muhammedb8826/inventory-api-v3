@@ -1,3 +1,4 @@
+import type { UnitSnapshot } from '../../units/conversion';
 import {
   BeforeInsert,
   Column,
@@ -25,6 +26,9 @@ export class CustomerInquiryLine {
 
   @Column({ name: 'item_id', type: 'uuid' })
   itemId: string;
+
+  @Column({ name: 'unit_snapshot', type: 'jsonb', nullable: true })
+  unitSnapshot: UnitSnapshot | null;
 
   /** Requested quantity (optional interest qty). */
   @Column({ type: 'decimal', precision: 14, scale: 3, nullable: true })

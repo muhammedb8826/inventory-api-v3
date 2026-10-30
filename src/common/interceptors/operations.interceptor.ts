@@ -9,6 +9,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { from, lastValueFrom, Observable } from 'rxjs';
 import type { Request, Response } from 'express';
+import { addRecordActivity } from '../record-activity';
 
 @Injectable()
 export class OperationsInterceptor implements NestInterceptor {
@@ -42,8 +43,18 @@ export class OperationsInterceptor implements NestInterceptor {
       (async () => {
         const started = performance.now();
         let status = res.statusCode;
+        let result: unknown;
         try {
-          return await lastValueFrom(next.handle());
+          result = await lastValueFrom(next.handle());
+          status = res.statusCode;
+          if (req.user && req.method === 'GET') {
+            try {
+              await addRecordActivity(this.db, result, req.path);
+            } catch {
+              this.logger.error('Record activity could not be loaded');
+            }
+          }
+          return result;
         } catch (error) {
           status = (error as { getStatus?: () => number }).getStatus?.() ?? 500;
           throw error;
@@ -70,11 +81,51 @@ export class OperationsInterceptor implements NestInterceptor {
                   req.user.sub,
                   req.method,
                   route,
-                  req.params.id?.slice(0, 128) ?? null,
+                  (
+                    req.params.id ??
+                    (result && typeof result === 'object' && 'id' in result
+                      ? String(result.id)
+                      : null)
+                  )?.slice(0, 128) ?? null,
                   String(req.id ?? '').slice(0, 128),
                   status,
                 ],
               );
+              // The one-step transfer operation actually ships and receives in
+              // the service; retain both action users just like the two-step flow.
+              if (
+                status >= 200 &&
+                status < 300 &&
+                req.method === 'POST' &&
+                route.replace(/^\/api(?:\/v\d+)?/, '') === '/stock-transfers' &&
+                result &&
+                typeof result === 'object' &&
+                'id' in result &&
+                'status' in result &&
+                result.status === 'COMPLETED'
+              ) {
+                for (const action of ['ship', 'receive'])
+                  await this.db.query(
+                    `INSERT INTO audit_events (actor_id, method, route, resource_id, request_id, status_code) VALUES ($1,$2,$3,$4,$5,$6)`,
+                    [
+                      req.user.sub,
+                      req.method,
+                      `${route}/:id/${action}`,
+                      String(result.id),
+                      String(req.id ?? '').slice(0, 128),
+                      status,
+                    ],
+                  );
+              }
+              if (
+                status >= 200 &&
+                status < 300 &&
+                result &&
+                typeof result === 'object' &&
+                'id' in result
+              ) {
+                await addRecordActivity(this.db, result, req.path);
+              }
             } catch {
               this.logger.error(
                 'Audit event could not be persisted; check database availability',

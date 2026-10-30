@@ -59,6 +59,7 @@ export class CreateProductionOrderDto {
 
 /** Create PO from an accepted inquiry (resolves BOM from item if omitted). */
 export class StartProductionFromInquiryDto {
+  @IsOptional() @IsUUID() inquiryLineId?: string;
   @IsUUID()
   inquiryId: string;
 

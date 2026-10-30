@@ -1,3 +1,4 @@
+import { InquiryAttachment } from './inquiry-attachment.entity';
 import {
   Column,
   CreateDateColumn,
@@ -82,6 +83,12 @@ export class CustomerInquiry extends UuidBaseEntity {
 
   @Column({ name: 'internal_notes', type: 'text', nullable: true })
   internalNotes: string | null;
+
+  @Column({ name: 'requested_delivery_date', type: 'date', nullable: true })
+  requestedDeliveryDate: string | null;
+
+  @OneToMany(() => InquiryAttachment, (attachment) => attachment.inquiry)
+  attachments: InquiryAttachment[];
 
   @Column({ name: 'follow_up_at', type: 'timestamptz', nullable: true })
   followUpAt: Date | null;

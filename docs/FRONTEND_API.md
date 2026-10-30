@@ -737,7 +737,7 @@ Interested catalog products are stored as **`lines`** (zero or many). Legacy sin
 | POST | `/public/inquiries` | Submit from website / landing page |
 | GET | `/public/catalog` | Active catalog for product picker (`id`, `sku`, `description`, `imageUrl`) |
 
-**Catalog query:** `page`, `limit` (max 50), `search` (description / sku).
+**Catalog query:** `page`, `limit` (max 100), `search` (description / sku).
 
 **Inquiry body**
 
@@ -745,10 +745,10 @@ Interested catalog products are stored as **`lines`** (zero or many). Legacy sin
 |-------|----------|-------|
 | `contactName` | yes | |
 | `subject` | yes | |
-| `message` | yes | |
+| `message` | conditional | Required when no products are selected |
 | `phone` | one of phone/email | |
 | `email` | one of phone/email | |
-| `lines` | no | Array of `{ itemId, quantity?, notes? }` — multiple catalog items |
+| `lines` | no | Array of `{ itemId, quantity?, unitId?, dimensions?, notes? }` — multiple catalog items |
 | `itemId` | no | Legacy shorthand for a single line |
 
 **Response** (`201`)
@@ -793,9 +793,9 @@ Rules:
 
 **List query:** `page`, `limit`, `from`, `to`, `search` (name, email, phone, subject, message), `status`, `source` (`PUBLIC` \| `INTERNAL`), `priority`, `customerId`, `assignedToUserId`, `assignmentStatus`, `itemId` (matches any line).
 
-**Create body (internal):** same contact fields as public, plus optional `priority`, `customerId`, `assignedToUserId`, `internalNotes`, `followUpAt`, `lines` (or legacy `itemId`). Source is always `INTERNAL`; `createdById` is the logged-in user.
+**Create body (internal):** select optional `customerId`, supply `lines` (or describe a general request in `message`), and optionally `requestedDeliveryDate`, `priority`, `assignedToUserId`, `internalNotes`, or `followUpAt`. No contact information is required. Customer contact details are copied from the linked customer; otherwise the submitting employee identifies the request. `subject` is optional and defaults to the first requested product plus the remaining product count, or `General inquiry`. Source is always `INTERNAL`; `createdById` is the authenticated user. Public submission validation is unchanged. The internal UI does not send separate contact fields or a subject.
 
-**PATCH body:** any of `contactName`, `phone`, `email`, `subject`, `message`, `status`, `priority`, `customerId`, `lines`, `itemId` (legacy), `assignedToUserId`, `internalNotes`, `followUpAt`, `convertedSaleId`. Sending `lines` **replaces** all interest lines. Setting `convertedSaleId` auto-sets `status` to `CONVERTED` if status is omitted. Changing `assignedToUserId` updates `assignmentStatus` as above.
+**PATCH body:** any of `contactName`, `phone`, `email`, `subject`, `message`, `status`, `priority`, `customerId`, `lines`, `itemId` (legacy), `assignedToUserId`, `internalNotes`, `followUpAt`, `requestedDeliveryDate`. Sending `lines` **replaces** all interest lines atomically. `convertedSaleId` is read-only: legacy clients may echo its unchanged value, but assigning or clearing it is rejected. Create a sale to convert an inquiry. Changing `assignedToUserId` updates `assignmentStatus` as above.
 
 **DELETE** soft-cancels (`status = CANCELLED`). Converted inquiries cannot be deleted — set `CLOSED` instead.
 
@@ -1576,3 +1576,24 @@ Open [http://localhost:3000](http://localhost:3000).
 | `/settings/branding` | `GET/PATCH /settings/branding`, `POST/DELETE /settings/branding/hero-image`; public `GET /public/branding` |
 | `/users`, `/roles` | admin CRUD |
 | `/notifications` | in-app notification bell |
+
+
+### Inquiry measurements and reference files
+
+The form has Basic information, Products requested, and Additional information, plus a live summary. Unit choices come from the product's configured category. Optional assignment/follow-up settings are collapsed. Requested delivery is YYYY-MM-DD. Remarks are optional when products are selected; general inquiries require a description. Converted products and sale links are read-only. Unsaved changes block handoff until saved.
+
+- Authenticated GET /inquiries/catalog returns active products, including products without stock records, with item type, image and reference unit. It does not expose inventory quantities or costs. Public catalog responses also include the reference unit and item type.
+- Lines accept itemId, optional quantity, optional unitId, optional dimensions {widthMetres,lengthMetres,count}, and optional notes. Specifying units/dimensions requires a quantity. Duplicate products, nonpositive quantities and precision loss are rejected. Stored line.quantity is always the base quantity; unitSnapshot retains the entered quantity, source unit/factor, dimensions and square-metre factor. Legacy unspecified quantities remain null.
+- Header-only edits omit lines. Unchanged measurements retain their snapshot when notes are updated. A legacy base-quantity echo also retains its source snapshot. Changed measurements deliberately use current configuration. Header and line writes are atomic.
+- Sales prefill retains requested units, quantities and dimensions. Original-unit handoff uses the server-owned saved conversion, including prices. Other units use current rules. Optional sale-line inquiryLineId rejects stale handoffs. Production handoff accepts itemId and optional inquiryLineId, uses that product's base quantity, and retains its request snapshot. Delivery requests and customer specifications follow the handoff; internal notes are not copied to customer-facing sales notes. Conversion is serialized to prevent duplicate sales for one inquiry.
+- POST /inquiries/:id/attachments requires inquiries.write and accepts multipart files: PDF/PNG/JPEG/GIF/WebP, at most 5 files per inquiry, 5 MB per file. Signatures are checked. Browser uploads send one file per request to stay below proxy limits. Hash deduplication makes retries safe. If an upload fails, the saved inquiry remains available and Retry save updates it instead of creating a duplicate.
+- GET /inquiries/:id/attachments/:attachmentId requires inquiries.read and returns a download; DELETE requires inquiries.write. References are private database content included in database backups, with no public uploads URL. Metadata responses exclude binary content and hashes.
+
+Deploy backend source, install dependencies, build, back up, run NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run:prod, restart the backend, then deploy the frontend. InquiryMeasurements1749180000000 adds nullable measurement/date columns and the reference-file table without changing historical quantities. No reseeding is needed.
+
+
+### Record action attribution
+
+Authenticated mutations record the server-authenticated actor in the append-only audit trail. Create requests link the returned record ID; record actions link the route record ID. Failed requests remain in the audit trail but never supply successful action attribution. Authorized business record responses include `createdBy` (existing creator is retained), `updatedBy`, and `actionUsers` keyed by action, such as `Received`, `Dispatched`, `Completed`, or `Cancelled`. Detail responses additionally include up to 100 recent `activity` entries with `action`, `user` (ID and name), and `at`. These are read-only, derived metadata and are not accepted as actor inputs. Full history remains under `/audit-events` with `settings.read`; that endpoint now returns `actor_name` and `action` alongside the stored IDs and request details. Old records with no recorded actor are not assigned an invented user.
+
+Deploy migration `1749190000000-RecordActivityIndex` to keep record history lookups indexed. No reseeding is required.

@@ -19,6 +19,8 @@ export interface ItemConversion {
 }
 export interface UnitSnapshot {
   unitId: string;
+  category?: UnitOfMeasure['category'];
+  squareMetreFactor?: string;
   code: string;
   symbol: string;
   decimalPlaces?: number;
@@ -148,6 +150,7 @@ export async function normalizeLine<
   manager: EntityManager,
   itemId: string,
   line: T,
+  original?: UnitSnapshot | null,
 ): Promise<T & { unitSnapshot: UnitSnapshot }> {
   const item = await manager
     .getRepository(Item)
@@ -165,9 +168,35 @@ export async function normalizeLine<
     .getRepository(Item)
     .findOneByOrFail({ id: itemId });
   const units = await manager.getRepository(UnitOfMeasure).find();
-  const option = conversionOptions(fresh, units).find(
+  let option = conversionOptions(fresh, units).find(
     (o) => o.unit.id === (line.unitId || fresh.unitId),
   );
+  const frozen =
+    original?.unitId === (line.unitId || fresh.unitId) ? original : undefined;
+  if (frozen) {
+    const unit = units.find(
+      (u) =>
+        u.id === frozen.unitId &&
+        (u.id === fresh.unitId || (u.isActive && !u.requiresReview)),
+    );
+    if (!unit)
+      throw new BadRequestException(
+        'The original inquiry unit is no longer active',
+      );
+    option = {
+      unit: Object.assign(new UnitOfMeasure(), unit, {
+        code: frozen.code,
+        symbol: frozen.symbol,
+        decimalPlaces: frozen.decimalPlaces ?? unit.decimalPlaces,
+        category: frozen.category ?? unit.category,
+      }),
+      factor: frozen.factor,
+      isStandard: false,
+      purchaseDefault: false,
+      salesDefault: false,
+    };
+  }
+  let squareMetreFactor: string | undefined;
   if (!option)
     throw new BadRequestException(
       'This unit is not available for the selected item',
@@ -176,14 +205,15 @@ export async function normalizeLine<
     const squareMetre = conversionOptions(fresh, units).find(
       (o) => o.unit.code === 'M2' && o.unit.category === 'AREA',
     );
-    if (!squareMetre || option.unit.category !== 'AREA')
+    squareMetreFactor = frozen?.squareMetreFactor ?? squareMetre?.factor;
+    if (!squareMetreFactor || option.unit.category !== 'AREA')
       throw new BadRequestException(
         'Width and length entry requires an area unit and a square metre conversion in the group',
       );
     const area = new ConversionDecimal(line.dimensions.widthMetres)
       .mul(line.dimensions.lengthMetres)
       .mul(line.dimensions.count);
-    const enteredArea = area.mul(squareMetre.factor).div(option.factor);
+    const enteredArea = area.mul(squareMetreFactor).div(option.factor);
     if (enteredArea.minus(line.quantity).abs().gt('0.000000001'))
       throw new BadRequestException(
         'Quantity must match width x length x count',
@@ -222,6 +252,8 @@ export async function normalizeLine<
     ...(rate ? { unitPrice: rate.toNumber() } : {}),
     unitSnapshot: {
       unitId: option.unit.id,
+      category: option.unit.category,
+      ...(squareMetreFactor ? { squareMetreFactor } : {}),
       code: option.unit.code,
       symbol: option.unit.symbol,
       decimalPlaces: option.unit.decimalPlaces,

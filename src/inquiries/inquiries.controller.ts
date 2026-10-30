@@ -1,3 +1,7 @@
+import { PublicCatalogQueryDto } from './dto/public-catalog-query.dto';
+import { ApiBody, ApiConsumes, ApiProduces } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { inquiryUploadOptions } from './inquiry-attachments';
 import {
   Body,
   Controller,
@@ -8,6 +12,10 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  StreamableFile,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
@@ -32,6 +40,11 @@ export class InquiriesController {
     return this.service.findAll(query);
   }
 
+  @Get('catalog')
+  catalog(@Query() query: PublicCatalogQueryDto) {
+    return this.service.findPublicCatalog(query);
+  }
+
   @Get(':id')
   @RequirePermissions('inquiries.read')
   findOne(@Param('id') id: string) {
@@ -52,6 +65,52 @@ export class InquiriesController {
     @Body() dto: UpdateInquiryDto,
   ) {
     return this.service.update(id, dto, user.sub);
+  }
+
+  @Post(':id/attachments')
+  @RequirePermissions('inquiries.write')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['files'],
+      properties: {
+        files: {
+          type: 'array',
+          maxItems: 5,
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
+  @UseInterceptors(FilesInterceptor('files', 5, inquiryUploadOptions))
+  upload(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.service.addAttachments(id, files);
+  }
+  @Get(':id/attachments/:attachmentId')
+  @RequirePermissions('inquiries.read')
+  @ApiProduces('application/octet-stream')
+  async download(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+  ) {
+    const file = await this.service.downloadAttachment(id, attachmentId);
+    return new StreamableFile(file.data, {
+      type: file.mime,
+      length: file.size,
+      disposition: `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+    });
+  }
+  @Delete(':id/attachments/:attachmentId')
+  @RequirePermissions('inquiries.write')
+  removeAttachment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+  ) {
+    return this.service.removeAttachment(id, attachmentId);
   }
 
   @Post(':id/accept')

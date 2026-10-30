@@ -4469,6 +4469,50 @@
         ]
       }
     },
+    "/api/v1/inquiries/catalog": {
+      "get": {
+        "operationId": "InquiriesController_catalog",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inquiries"
+        ]
+      }
+    },
     "/api/v1/inquiries/{id}": {
       "get": {
         "operationId": "InquiriesController_findOne",
@@ -4554,10 +4598,126 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/CustomerInquiry"
                 }
               }
             }
+          }
+        },
+        "tags": [
+          "Inquiries"
+        ]
+      }
+    },
+    "/api/v1/inquiries/{id}/attachments": {
+      "post": {
+        "operationId": "InquiriesController_upload",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InquiryAttachment"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Inquiries"
+        ]
+      }
+    },
+    "/api/v1/inquiries/{id}/attachments/{attachmentId}": {
+      "get": {
+        "operationId": "InquiriesController_download",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inquiries"
+        ]
+      },
+      "delete": {
+        "operationId": "InquiriesController_removeAttachment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
           }
         },
         "tags": [
@@ -9059,6 +9219,10 @@
       "StartProductionFromInquiryDto": {
         "type": "object",
         "properties": {
+          "inquiryLineId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "inquiryId": {
             "type": "string",
             "format": "uuid"
@@ -9095,6 +9259,38 @@
         "required": [
           "inquiryId",
           "locationId"
+        ]
+      },
+      "InquiryAttachment": {
+        "type": "object",
+        "properties": {
+          "inquiryId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "size": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "inquiryId",
+          "name",
+          "mime",
+          "size",
+          "createdAt",
+          "id"
         ]
       },
       "ProductionOrderLine": {
@@ -9857,6 +10053,10 @@
           "itemId": {
             "type": "string"
           },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
           "quantity": {
             "type": "string",
             "nullable": true,
@@ -9877,6 +10077,7 @@
           "id",
           "inquiryId",
           "itemId",
+          "unitSnapshot",
           "quantity",
           "notes",
           "inquiry",
@@ -9965,6 +10166,16 @@
             "type": "string",
             "nullable": true
           },
+          "requestedDeliveryDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InquiryAttachment"
+            }
+          },
           "followUpAt": {
             "format": "date-time",
             "type": "string",
@@ -10050,6 +10261,8 @@
           "acceptedAt",
           "createdById",
           "internalNotes",
+          "requestedDeliveryDate",
+          "attachments",
           "followUpAt",
           "convertedSaleId",
           "readyForSaleAt",
@@ -10906,6 +11119,13 @@
       "InquiryLineDto": {
         "type": "object",
         "properties": {
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/AreaDimensionsDto"
+          },
           "itemId": {
             "type": "string",
             "format": "uuid"
@@ -10925,6 +11145,18 @@
       "CreateInquiryDto": {
         "type": "object",
         "properties": {
+          "contactName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150,
+            "description": "Derived from the linked customer or submitting employee for internal requests."
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Generated from requested products when omitted."
+          },
           "priority": {
             "type": "string",
             "enum": [
@@ -10948,11 +11180,6 @@
           "followUpAt": {
             "type": "string"
           },
-          "contactName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 150
-          },
           "phone": {
             "type": "string",
             "maxLength": 50
@@ -10962,18 +11189,18 @@
             "maxLength": 150,
             "format": "email"
           },
-          "subject": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
           "message": {
             "type": "string",
-            "minLength": 1
+            "maxLength": 20000
+          },
+          "requestedDeliveryDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
           "lines": {
             "description": "Preferred: multiple catalog items of interest.\nLegacy: single `itemId` still accepted and stored as one line.",
             "minItems": 1,
+            "maxItems": 100,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InquiryLineDto"
@@ -10984,16 +11211,19 @@
             "deprecated": true,
             "format": "uuid"
           }
-        },
-        "required": [
-          "contactName",
-          "subject",
-          "message"
-        ]
+        }
       },
       "UpdateInquiryDto": {
         "type": "object",
         "properties": {
+          "convertedSaleId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "readOnly": true,
+            "deprecated": true,
+            "description": "Legacy clients may echo the unchanged link. It cannot be assigned or cleared here."
+          },
           "contactName": {
             "type": "string",
             "minLength": 1,
@@ -11017,7 +11247,7 @@
           },
           "message": {
             "type": "string",
-            "minLength": 1
+            "maxLength": 20000
           },
           "status": {
             "type": "string",
@@ -11045,6 +11275,7 @@
             "format": "uuid"
           },
           "lines": {
+            "maxItems": 100,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InquiryLineDto"
@@ -11069,10 +11300,10 @@
             "type": "string",
             "nullable": true
           },
-          "convertedSaleId": {
+          "requestedDeliveryDate": {
             "type": "string",
             "nullable": true,
-            "format": "uuid"
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           }
         }
       },
@@ -11100,11 +11331,16 @@
           },
           "message": {
             "type": "string",
-            "minLength": 1
+            "maxLength": 20000
+          },
+          "requestedDeliveryDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
           "lines": {
             "description": "Preferred: multiple catalog items of interest.\nLegacy: single `itemId` still accepted and stored as one line.",
             "minItems": 1,
+            "maxItems": 100,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InquiryLineDto"
@@ -11118,8 +11354,7 @@
         },
         "required": [
           "contactName",
-          "subject",
-          "message"
+          "subject"
         ]
       },
       "PurchaseLineDto": {
@@ -11310,6 +11545,10 @@
       "SaleLineDto": {
         "type": "object",
         "properties": {
+          "inquiryLineId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "dimensions": {
             "$ref": "#/components/schemas/AreaDimensionsDto"
           },

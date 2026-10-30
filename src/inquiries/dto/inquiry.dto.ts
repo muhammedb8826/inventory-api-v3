@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { AreaDimensionsDto } from '../../units/dto/area-dimensions.dto';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -9,6 +11,8 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
+  ArrayMaxSize,
   MaxLength,
   Min,
   MinLength,
@@ -24,6 +28,11 @@ import {
 import { ListQueryDto } from '../../common/dto/list-query.dto';
 
 export class InquiryLineDto {
+  @IsOptional() @IsUUID() unitId?: string;
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AreaDimensionsDto)
+  dimensions?: AreaDimensionsDto;
   @IsUUID()
   itemId: string;
 
@@ -60,9 +69,14 @@ export class CreateInquiryBaseDto {
   @MaxLength(200)
   subject: string;
 
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  message: string;
+  @MaxLength(20000)
+  message?: string;
+  @IsOptional()
+  @IsDateString({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  requestedDeliveryDate?: string;
 
   /**
    * Preferred: multiple catalog items of interest.
@@ -70,6 +84,7 @@ export class CreateInquiryBaseDto {
    */
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => InquiryLineDto)
@@ -86,6 +101,16 @@ export class PublicCreateInquiryDto extends CreateInquiryBaseDto {}
 
 /** Staff-created inquiry (walk-in / phone). */
 export class CreateInquiryDto extends CreateInquiryBaseDto {
+  /** Derived from the linked customer or submitting employee for internal requests. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  declare contactName: string;
+
+  /** Generated from requested products when omitted. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  declare subject: string;
+
   @IsOptional()
   @IsEnum(InquiryPriority)
   priority?: InquiryPriority;
@@ -108,6 +133,15 @@ export class CreateInquiryDto extends CreateInquiryBaseDto {
 }
 
 export class UpdateInquiryDto {
+  @ApiPropertyOptional({
+    readOnly: true,
+    deprecated: true,
+    description:
+      'Legacy clients may echo the unchanged link. It cannot be assigned or cleared here.',
+  })
+  @IsOptional()
+  @IsUUID()
+  readonly convertedSaleId?: string | null;
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -133,7 +167,7 @@ export class UpdateInquiryDto {
 
   @IsOptional()
   @IsString()
-  @MinLength(1)
+  @MaxLength(20000)
   message?: string;
 
   @IsOptional()
@@ -150,6 +184,7 @@ export class UpdateInquiryDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => InquiryLineDto)
   lines?: InquiryLineDto[];
@@ -172,8 +207,9 @@ export class UpdateInquiryDto {
   followUpAt?: string | null;
 
   @IsOptional()
-  @IsUUID()
-  convertedSaleId?: string | null;
+  @IsDateString({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  requestedDeliveryDate?: string | null;
 }
 
 export class InquiryListQueryDto extends ListQueryDto {

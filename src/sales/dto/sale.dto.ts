@@ -19,6 +19,7 @@ import { EmptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { resolveLineItemIdFromPayload } from '../../common/utils/line-item-id.util';
 
 export class SaleLineDto {
+  @IsOptional() @IsUUID() inquiryLineId?: string;
   @IsOptional()
   @ValidateNested()
   @Type(() => AreaDimensionsDto)

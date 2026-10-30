@@ -1,4 +1,4 @@
-import { normalizeLine } from '../units/conversion';
+import { normalizeLine, type UnitSnapshot } from '../units/conversion';
 import {
   BadRequestException,
   Injectable,
@@ -129,7 +129,11 @@ export class ProductionService {
     return order;
   }
 
-  async create(dto: CreateProductionOrderDto, userId?: string) {
+  async create(
+    dto: CreateProductionOrderDto,
+    userId?: string,
+    inquirySnapshot?: UnitSnapshot | null,
+  ) {
     const bom = await this.bomRepo.findOne({
       where: { id: dto.bomId },
       relations: { lines: true, finishedItem: true },
@@ -140,11 +144,12 @@ export class ProductionService {
       throw new BadRequestException('BOM has no component lines');
     }
     this.assertBomEffective(bom);
-    const normalized = await normalizeLine(
-      this.orderRepo.manager,
-      bom.finishedItemId,
-      { quantity: dto.quantityPlanned, unitId: dto.unitId },
-    );
+    const normalized = inquirySnapshot
+      ? { quantity: dto.quantityPlanned, unitSnapshot: inquirySnapshot }
+      : await normalizeLine(this.orderRepo.manager, bom.finishedItemId, {
+          quantity: dto.quantityPlanned,
+          unitId: dto.unitId,
+        });
     dto = { ...dto, quantityPlanned: normalized.quantity };
     await this.stockService.assertQuantity(
       bom.finishedItemId,
@@ -309,6 +314,30 @@ export class ProductionService {
       }
     }
 
+    const selectedBom = await this.bomRepo.findOneBy({ id: bomId });
+    if (dto.itemId && selectedBom && selectedBom.finishedItemId !== dto.itemId)
+      throw new BadRequestException(
+        'The BOM does not belong to the selected inquiry product',
+      );
+    const selectedLine = lines.find(
+      (l) => l.itemId === selectedBom?.finishedItemId,
+    );
+    if (dto.inquiryLineId && selectedLine?.id !== dto.inquiryLineId)
+      throw new BadRequestException(
+        'The inquiry products have changed. Reload before starting production',
+      );
+    if (dto.quantityPlanned == null && selectedLine?.quantity)
+      quantity = Number(selectedLine.quantity);
+    if (
+      selectedLine &&
+      selectedLine.quantity == null &&
+      dto.quantityPlanned == null
+    )
+      throw new BadRequestException(
+        'Enter the requested product quantity before starting production',
+      );
+    const snapshot =
+      dto.quantityPlanned == null ? selectedLine?.unitSnapshot : null;
     return this.create(
       {
         bomId,
@@ -317,9 +346,20 @@ export class ProductionService {
         quantityPlanned: quantity,
         explodeBom: dto.explodeBom,
         inquiryId: inquiry.id,
-        notes: dto.notes,
+        notes:
+          dto.notes ??
+          [
+            inquiry.message,
+            selectedLine?.notes,
+            inquiry.requestedDeliveryDate
+              ? `Requested delivery: ${inquiry.requestedDeliveryDate}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join('\n'),
       },
       userId,
+      snapshot,
     );
   }
 

@@ -1,4 +1,7 @@
-import { assertUnitQuantity } from '../units/unit-quantity';
+import { normalizeLine, type UnitSnapshot } from '../units/conversion';
+import { InquiryAttachment } from '../database/entities/inquiry-attachment.entity';
+import { createHash } from 'crypto';
+import { attachmentInput } from './inquiry-attachments';
 import {
   BadRequestException,
   ForbiddenException,
@@ -7,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { parseDateRange } from '../common/dto/date-range.dto';
 import {
   InquiryAssignmentStatus,
@@ -52,6 +55,7 @@ export class InquiriesService {
     private readonly saleRepo: Repository<Sale>,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
+    private readonly db: DataSource,
   ) {}
 
   /**
@@ -105,25 +109,64 @@ export class InquiriesService {
     return [];
   }
 
-  private async assertLines(lines: InquiryLineDto[]) {
+  private async normalizeLines(
+    manager: EntityManager,
+    lines: InquiryLineDto[],
+    existing: CustomerInquiryLine[] = [],
+  ) {
     const seen = new Set<string>();
+    const result: (InquiryLineDto & { unitSnapshot: UnitSnapshot | null })[] =
+      [];
     for (const line of lines) {
-      if (seen.has(line.itemId)) {
+      if (seen.has(line.itemId))
         throw new BadRequestException('Duplicate item in inquiry lines');
-      }
       seen.add(line.itemId);
-      const item = await this.itemRepo.findOne({ where: { id: line.itemId } });
-      if (!item) {
-        throw new BadRequestException(`Item not found: ${line.itemId}`);
-      }
-      if (line.quantity !== undefined)
-        assertUnitQuantity(item.stockUnit, line.quantity, 'Inquiry quantity');
-      if (!item.isActive) {
-        throw new BadRequestException(
-          `Item is inactive: ${item.description ?? line.itemId}`,
+      const item = await manager
+        .getRepository(Item)
+        .findOneBy({ id: line.itemId });
+      if (!item || !item.isActive)
+        throw new BadRequestException('Select an active catalog item');
+      if (line.quantity == null) {
+        if (line.unitId || line.dimensions)
+          throw new BadRequestException(
+            'Enter a quantity when specifying units or dimensions',
+          );
+        result.push({ ...line, unitSnapshot: null });
+      } else {
+        const old = existing.find((l) => l.itemId === line.itemId);
+        if (
+          !line.unitId &&
+          !line.dimensions &&
+          old?.unitSnapshot &&
+          Number(old.quantity) === line.quantity
+        ) {
+          result.push({
+            ...line,
+            quantity: Number(old.quantity),
+            unitSnapshot: old.unitSnapshot,
+          });
+          continue;
+        }
+        const previous = existing.find(
+          (l) => l.itemId === line.itemId,
+        )?.unitSnapshot;
+        const unchanged =
+          previous &&
+          previous.unitId === (line.unitId || item.unitId) &&
+          Number(previous.quantity) === line.quantity &&
+          JSON.stringify(previous.dimensions ?? null) ===
+            JSON.stringify(line.dimensions ?? null);
+        result.push(
+          await normalizeLine(
+            manager,
+            line.itemId,
+            { ...line, quantity: line.quantity },
+            unchanged ? previous : undefined,
+          ),
         );
       }
     }
+    return result;
   }
 
   private async assertOptionalRefs(opts: {
@@ -153,25 +196,25 @@ export class InquiriesService {
     }
   }
 
-  private mapLineEntities(
+  private async saveLines(
+    manager: EntityManager,
     inquiryId: string,
-    lines: InquiryLineDto[],
-  ): CustomerInquiryLine[] {
-    return lines.map((line) =>
-      this.lineRepo.create({
-        inquiryId,
-        itemId: line.itemId,
-        quantity: line.quantity !== undefined ? line.quantity.toFixed(3) : null,
-        notes: line.notes?.trim() || null,
-      }),
-    );
-  }
-
-  private async replaceLines(inquiryId: string, lines: InquiryLineDto[]) {
-    await this.assertLines(lines);
-    await this.lineRepo.delete({ inquiryId });
-    if (lines.length === 0) return;
-    await this.lineRepo.save(this.mapLineEntities(inquiryId, lines));
+    lines: (InquiryLineDto & { unitSnapshot: UnitSnapshot | null })[],
+  ) {
+    const repo = manager.getRepository(CustomerInquiryLine);
+    await repo.delete({ inquiryId });
+    if (lines.length)
+      await repo.save(
+        lines.map((line) =>
+          repo.create({
+            inquiryId,
+            itemId: line.itemId,
+            quantity: line.quantity != null ? line.quantity.toFixed(3) : null,
+            unitSnapshot: line.unitSnapshot,
+            notes: line.notes?.trim() || null,
+          }),
+        ),
+      );
   }
 
   private inquiryNotifyPayload(row: CustomerInquiry) {
@@ -271,6 +314,7 @@ export class InquiriesService {
         assignedTo: true,
         createdBy: true,
         convertedSale: true,
+        attachments: true,
       },
       order: { lines: { id: 'ASC' } },
     });
@@ -278,153 +322,225 @@ export class InquiriesService {
     return row;
   }
 
-  async createPublic(dto: PublicCreateInquiryDto) {
-    this.assertContactChannel(dto.phone, dto.email);
+  private async createRequest(
+    dto: CreateInquiryDto | PublicCreateInquiryDto,
+    source: InquirySource,
+    actor?: string,
+  ) {
+    if (source === InquirySource.PUBLIC)
+      this.assertContactChannel(dto.phone, dto.email);
+    if (
+      source === InquirySource.PUBLIC &&
+      (!dto.contactName?.trim() || !dto.subject?.trim())
+    )
+      throw new BadRequestException('Contact name and subject are required');
     const lines = this.resolveLines(dto.lines, dto.itemId);
-    await this.assertLines(lines);
-
-    const row = await this.repo.save(
-      this.repo.create({
-        contactName: dto.contactName.trim(),
-        phone: dto.phone?.trim() || null,
-        email: dto.email?.trim() || null,
-        subject: dto.subject.trim(),
-        message: dto.message.trim(),
-        source: InquirySource.PUBLIC,
+    if (!lines.length && !dto.message?.trim())
+      throw new BadRequestException('Add a product or describe the request');
+    const staff =
+      source === InquirySource.INTERNAL ? (dto as CreateInquiryDto) : undefined;
+    await this.assertOptionalRefs({
+      customerId: staff?.customerId,
+      assignedToUserId: staff?.assignedToUserId,
+    });
+    const customer = staff?.customerId
+      ? await this.customerRepo.findOneBy({ id: staff.customerId })
+      : null;
+    const employee = actor
+      ? await this.db.getRepository(User).findOneBy({ id: actor })
+      : null;
+    const row = await this.db.transaction(async (manager) => {
+      const normalized = await this.normalizeLines(manager, lines);
+      const firstItem = lines[0]
+        ? await manager.getRepository(Item).findOneBy({ id: lines[0].itemId })
+        : null;
+      const repo = manager.getRepository(CustomerInquiry);
+      const draft = repo.create({
+        contactName:
+          source === InquirySource.INTERNAL
+            ? (customer?.name ?? employee?.fullName ?? 'Internal inquiry')
+            : dto.contactName.trim(),
+        phone:
+          source === InquirySource.INTERNAL
+            ? (customer?.phone ?? null)
+            : dto.phone?.trim() || null,
+        email:
+          source === InquirySource.INTERNAL
+            ? (customer?.email ?? null)
+            : dto.email?.trim() || null,
+        subject:
+          dto.subject?.trim() ||
+          (firstItem
+            ? `${firstItem.description}${lines.length > 1 ? ` + ${lines.length - 1} more` : ''}`.slice(
+                0,
+                200,
+              )
+            : 'General inquiry'),
+        message: dto.message?.trim() || '',
+        requestedDeliveryDate: dto.requestedDeliveryDate || null,
+        source,
         status: InquiryStatus.NEW,
-        priority: InquiryPriority.NORMAL,
-        customerId: null,
+        priority: staff?.priority ?? InquiryPriority.NORMAL,
+        customerId: staff?.customerId ?? null,
         assignedToUserId: null,
         assignmentStatus: InquiryAssignmentStatus.UNASSIGNED,
         assignedAt: null,
         acceptedAt: null,
-        createdById: null,
-        internalNotes: null,
-        followUpAt: null,
+        createdById: actor ?? null,
+        internalNotes: staff?.internalNotes?.trim() || null,
+        followUpAt: staff?.followUpAt ? new Date(staff.followUpAt) : null,
         convertedSaleId: null,
-      }),
-    );
-
-    if (lines.length) {
-      await this.lineRepo.save(this.mapLineEntities(row.id, lines));
-    }
-
+      });
+      if (staff?.assignedToUserId && actor)
+        this.applyAssigneeChange(draft, staff.assignedToUserId, actor);
+      const saved = await repo.save(draft);
+      await this.saveLines(manager, saved.id, normalized);
+      return saved;
+    });
+    return row;
+  }
+  async createPublic(dto: PublicCreateInquiryDto) {
+    const row = await this.createRequest(dto, InquirySource.PUBLIC);
     await this.notifications.onInquirySubmitted(this.inquiryNotifyPayload(row));
-
     return {
       id: row.id,
       status: row.status,
       message: 'Inquiry submitted successfully',
     };
   }
-
-  async createInternal(dto: CreateInquiryDto, createdById: string) {
-    this.assertContactChannel(dto.phone, dto.email);
-    const lines = this.resolveLines(dto.lines, dto.itemId);
-    await this.assertOptionalRefs({
-      customerId: dto.customerId,
-      assignedToUserId: dto.assignedToUserId,
-    });
-    await this.assertLines(lines);
-
-    const draft = this.repo.create({
-      contactName: dto.contactName.trim(),
-      phone: dto.phone?.trim() || null,
-      email: dto.email?.trim() || null,
-      subject: dto.subject.trim(),
-      message: dto.message.trim(),
-      priority: dto.priority ?? InquiryPriority.NORMAL,
-      customerId: dto.customerId ?? null,
-      assignedToUserId: null,
-      assignmentStatus: InquiryAssignmentStatus.UNASSIGNED,
-      assignedAt: null,
-      acceptedAt: null,
-      internalNotes: dto.internalNotes?.trim() || null,
-      followUpAt: dto.followUpAt ? new Date(dto.followUpAt) : null,
-      source: InquirySource.INTERNAL,
-      status: InquiryStatus.NEW,
-      createdById,
-      convertedSaleId: null,
-    });
-
-    if (dto.assignedToUserId) {
-      this.applyAssigneeChange(draft, dto.assignedToUserId, createdById);
-    }
-
-    const row = await this.repo.save(draft);
-
-    if (lines.length) {
-      await this.lineRepo.save(this.mapLineEntities(row.id, lines));
-    }
-
-    if (row.assignedToUserId) {
+  async createInternal(dto: CreateInquiryDto, actor: string) {
+    const row = await this.createRequest(dto, InquirySource.INTERNAL, actor);
+    if (row.assignedToUserId)
       await this.notifications.onInquiryAssignmentChanged({
         ...this.inquiryNotifyPayload(row),
         assigneeUserId: row.assignedToUserId,
         previousAssigneeUserId: null,
-        actorUserId: createdById,
+        actorUserId: actor,
         assignmentStatus: row.assignmentStatus,
       });
-    }
-
     return this.findOne(row.id);
   }
-
   async update(id: string, dto: UpdateInquiryDto, actorUserId: string) {
-    const row = await this.findOne(id);
-    const previousAssigneeUserId = row.assignedToUserId;
-
-    const nextPhone = dto.phone !== undefined ? dto.phone : row.phone;
-    const nextEmail = dto.email !== undefined ? dto.email : row.email;
-    if (dto.phone !== undefined || dto.email !== undefined) {
-      this.assertContactChannel(nextPhone, nextEmail);
-    }
-
-    await this.assertOptionalRefs({
-      customerId: dto.customerId,
-      assignedToUserId: dto.assignedToUserId,
-      convertedSaleId: dto.convertedSaleId,
-    });
-
-    if (dto.contactName !== undefined) row.contactName = dto.contactName.trim();
-    if (dto.phone !== undefined) row.phone = dto.phone?.trim() || null;
-    if (dto.email !== undefined) row.email = dto.email?.trim() || null;
-    if (dto.subject !== undefined) row.subject = dto.subject.trim();
-    if (dto.message !== undefined) row.message = dto.message.trim();
-    if (dto.status !== undefined) row.status = dto.status;
-    if (dto.priority !== undefined) row.priority = dto.priority;
-    if (dto.customerId !== undefined) row.customerId = dto.customerId;
-    let assigneeChanged = false;
-    if (dto.assignedToUserId !== undefined) {
-      assigneeChanged = this.applyAssigneeChange(
-        row,
-        dto.assignedToUserId,
-        actorUserId,
-      );
-    }
-    if (dto.internalNotes !== undefined) {
-      row.internalNotes = dto.internalNotes?.trim() || null;
-    }
-    if (dto.followUpAt !== undefined) {
-      row.followUpAt = dto.followUpAt ? new Date(dto.followUpAt) : null;
-    }
-    if (dto.convertedSaleId !== undefined) {
-      row.convertedSaleId = dto.convertedSaleId;
-      if (dto.convertedSaleId && dto.status === undefined) {
-        row.status = InquiryStatus.CONVERTED;
-      }
-    }
-
-    const { lines: _existingLines, ...header } = row;
-    await this.repo.save(header);
-
-    if (dto.lines !== undefined) {
-      await this.replaceLines(id, dto.lines);
-    } else if (dto.itemId !== undefined) {
-      await this.replaceLines(id, dto.itemId ? [{ itemId: dto.itemId }] : []);
-    }
-
-    if (assigneeChanged) {
+    const { row, previousAssigneeUserId, assigneeChanged } =
+      await this.db.transaction(async (manager) => {
+        await manager.query(
+          'SELECT id FROM customer_inquiries WHERE id=$1 FOR UPDATE',
+          [id],
+        );
+        const repo = manager.getRepository(CustomerInquiry);
+        const row = await repo.findOneBy({ id });
+        if (!row) throw new NotFoundException('Inquiry not found');
+        if (dto.status === InquiryStatus.CONVERTED && !row.convertedSaleId)
+          throw new BadRequestException(
+            'Create a sale from this inquiry to mark it converted',
+          );
+        if (
+          row.convertedSaleId &&
+          dto.status !== undefined &&
+          ![InquiryStatus.CONVERTED, InquiryStatus.CLOSED].includes(dto.status)
+        )
+          throw new BadRequestException(
+            'A converted inquiry cannot be reopened',
+          );
+        if (
+          dto.convertedSaleId !== undefined &&
+          dto.convertedSaleId !== row.convertedSaleId
+        )
+          throw new BadRequestException(
+            'The sale link is read-only. Create a sale from the inquiry instead.',
+          );
+        const previousAssigneeUserId = row.assignedToUserId;
+        if (row.source === InquirySource.PUBLIC)
+          this.assertContactChannel(
+            dto.phone !== undefined ? dto.phone : row.phone,
+            dto.email !== undefined ? dto.email : row.email,
+          );
+        await this.assertOptionalRefs({
+          customerId: dto.customerId,
+          assignedToUserId: dto.assignedToUserId,
+        });
+        let changedLines = dto.lines !== undefined || dto.itemId !== undefined;
+        const existingLines = changedLines
+          ? await manager
+              .getRepository(CustomerInquiryLine)
+              .findBy({ inquiryId: id })
+          : [];
+        if (changedLines && row.convertedSaleId) {
+          const requested = this.resolveLines(dto.lines, dto.itemId);
+          const legacyEcho =
+            requested.length === existingLines.length &&
+            new Set(requested.map((l) => l.itemId)).size === requested.length &&
+            requested.every((line) => {
+              const old = existingLines.find((l) => l.itemId === line.itemId);
+              return (
+                old &&
+                !line.unitId &&
+                !line.dimensions &&
+                (line.quantity == null
+                  ? old.quantity == null
+                  : Number(old.quantity) === line.quantity) &&
+                (line.notes?.trim() || null) === (old.notes?.trim() || null)
+              );
+            });
+          if (!legacyEcho)
+            throw new BadRequestException(
+              'Converted inquiry products are read-only',
+            );
+          changedLines = false;
+        }
+        const normalized = changedLines
+          ? await this.normalizeLines(
+              manager,
+              this.resolveLines(dto.lines, dto.itemId),
+              existingLines,
+            )
+          : null;
+        if (
+          normalized &&
+          !normalized.length &&
+          !(dto.message ?? row.message)?.trim()
+        )
+          throw new BadRequestException(
+            'Add a product or describe the request',
+          );
+        for (const key of ['contactName', 'subject', 'message'] as const)
+          if (dto[key] !== undefined) row[key] = dto[key].trim();
+        for (const key of ['phone', 'email', 'internalNotes'] as const)
+          if (dto[key] !== undefined) row[key] = dto[key]?.trim() || null;
+        if (dto.priority !== undefined) row.priority = dto.priority;
+        if (dto.status !== undefined) row.status = dto.status;
+        if (dto.customerId !== undefined) {
+          row.customerId = dto.customerId;
+          if (row.source === InquirySource.INTERNAL) {
+            const customer = dto.customerId
+              ? await manager
+                  .getRepository(Customer)
+                  .findOneBy({ id: dto.customerId })
+              : null;
+            const creator = row.createdById
+              ? await manager
+                  .getRepository(User)
+                  .findOneBy({ id: row.createdById })
+              : null;
+            row.contactName =
+              customer?.name ?? creator?.fullName ?? 'Internal inquiry';
+            row.phone = customer?.phone ?? null;
+            row.email = customer?.email ?? null;
+          }
+        }
+        if (dto.requestedDeliveryDate !== undefined)
+          row.requestedDeliveryDate = dto.requestedDeliveryDate || null;
+        if (dto.followUpAt !== undefined)
+          row.followUpAt = dto.followUpAt ? new Date(dto.followUpAt) : null;
+        const assigneeChanged =
+          dto.assignedToUserId !== undefined
+            ? this.applyAssigneeChange(row, dto.assignedToUserId, actorUserId)
+            : false;
+        await repo.save(row);
+        if (normalized) await this.saveLines(manager, id, normalized);
+        return { row, previousAssigneeUserId, assigneeChanged };
+      });
+    if (assigneeChanged)
       await this.notifications.onInquiryAssignmentChanged({
         ...this.inquiryNotifyPayload(row),
         assigneeUserId: row.assignedToUserId,
@@ -432,26 +548,111 @@ export class InquiriesService {
         actorUserId,
         assignmentStatus: row.assignmentStatus,
       });
-    }
-
     return this.findOne(id);
   }
+  async addAttachments(id: string, files: Express.Multer.File[]) {
+    if (!files?.length)
+      throw new BadRequestException('Choose at least one file');
+    const inputs = files.map((file) => ({
+      ...attachmentInput(file),
+      hash: createHash('sha256').update(file.buffer).digest('hex'),
+    }));
+    return this.db.transaction(async (manager) => {
+      const [row] = await manager.query(
+        'SELECT id FROM customer_inquiries WHERE id=$1 FOR UPDATE',
+        [id],
+      );
+      if (!row) throw new NotFoundException('Inquiry not found');
+      const repo = manager.getRepository(InquiryAttachment);
+      const existing = await repo
+        .createQueryBuilder('a')
+        .addSelect('a.hash')
+        .where('a.inquiryId=:id', { id })
+        .getMany();
+      const known = new Set(existing.map((a) => a.hash));
+      const unique = inputs.filter((input) => {
+        if (known.has(input.hash)) return false;
+        known.add(input.hash);
+        return true;
+      });
+      if (existing.length + unique.length > 5)
+        throw new BadRequestException(
+          'An inquiry supports up to 5 attachments',
+        );
+      if (unique.length)
+        await repo.save(
+          unique.map((input) => repo.create({ ...input, inquiryId: id })),
+        );
+      return repo.find({
+        where: { inquiryId: id },
+        order: { createdAt: 'ASC' },
+      });
+    });
+  }
+  async downloadAttachment(id: string, attachmentId: string) {
+    const file = await this.db
+      .getRepository(InquiryAttachment)
+      .createQueryBuilder('a')
+      .addSelect('a.data')
+      .where('a.id=:attachmentId AND a.inquiryId=:id', { id, attachmentId })
+      .getOne();
+    if (!file) throw new NotFoundException('Attachment not found');
+    return file;
+  }
+  async removeAttachment(id: string, attachmentId: string) {
+    const result = await this.db
+      .getRepository(InquiryAttachment)
+      .delete({ id: attachmentId, inquiryId: id });
+    if (!result.affected) throw new NotFoundException('Attachment not found');
+    return { deleted: true };
+  }
 
+  private async transition<T>(id: string, action: (row: CustomerInquiry) => T) {
+    return this.db.transaction(async (manager) => {
+      await manager.query(
+        'SELECT id FROM customer_inquiries WHERE id=$1 FOR UPDATE',
+        [id],
+      );
+      const repo = manager.getRepository(CustomerInquiry);
+      const row = await repo.findOne({
+        where: { id },
+        relations: { lines: true },
+      });
+      if (!row) throw new NotFoundException('Inquiry not found');
+      if (
+        row.convertedSaleId ||
+        [
+          InquiryStatus.CANCELLED,
+          InquiryStatus.CLOSED,
+          InquiryStatus.CONVERTED,
+        ].includes(row.status)
+      )
+        throw new BadRequestException('This inquiry is no longer open');
+      const result = action(row);
+      if (result !== false)
+        await repo.update(id, {
+          status: row.status,
+          assignedToUserId: row.assignedToUserId,
+          assignmentStatus: row.assignmentStatus,
+          assignedAt: row.assignedAt,
+          acceptedAt: row.acceptedAt,
+        });
+      return { row, result };
+    });
+  }
   async accept(id: string, userId: string) {
-    const row = await this.findOne(id);
-    if (row.assignedToUserId !== userId) {
-      throw new ForbiddenException('Only the assignee can accept this inquiry');
-    }
-    if (row.assignmentStatus !== InquiryAssignmentStatus.PENDING) {
-      throw new BadRequestException('Inquiry is not pending acceptance');
-    }
-    row.assignmentStatus = InquiryAssignmentStatus.ACCEPTED;
-    row.acceptedAt = new Date();
-    if (row.status === InquiryStatus.NEW) {
-      row.status = InquiryStatus.IN_PROGRESS;
-    }
-    const { lines: _lines, ...header } = row;
-    await this.repo.save(header);
+    const { row } = await this.transition(id, (row) => {
+      if (row.assignedToUserId !== userId)
+        throw new ForbiddenException(
+          'Only the assignee can accept this inquiry',
+        );
+      if (row.assignmentStatus !== InquiryAssignmentStatus.PENDING)
+        throw new BadRequestException('Inquiry is not pending acceptance');
+      row.assignmentStatus = InquiryAssignmentStatus.ACCEPTED;
+      row.acceptedAt = new Date();
+      if (row.status === InquiryStatus.NEW)
+        row.status = InquiryStatus.IN_PROGRESS;
+    });
     await this.notifications.onInquiryAssignmentResponse({
       ...this.inquiryNotifyPayload(row),
       actorUserId: userId,
@@ -459,24 +660,23 @@ export class InquiriesService {
     });
     return this.findOne(id);
   }
-
   async decline(id: string, userId: string) {
-    const row = await this.findOne(id);
-    if (row.assignedToUserId !== userId) {
-      throw new ForbiddenException(
-        'Only the assignee can decline this inquiry',
-      );
-    }
-    if (row.assignmentStatus !== InquiryAssignmentStatus.PENDING) {
-      throw new BadRequestException('Inquiry is not pending acceptance');
-    }
-    const previousAssigneeUserId = row.assignedToUserId;
-    row.assignedToUserId = null;
-    row.assignmentStatus = InquiryAssignmentStatus.DECLINED;
-    row.assignedAt = null;
-    row.acceptedAt = null;
-    const { lines: _lines, ...header } = row;
-    await this.repo.save(header);
+    const { row, result: previousAssigneeUserId } = await this.transition(
+      id,
+      (row) => {
+        if (row.assignedToUserId !== userId)
+          throw new ForbiddenException(
+            'Only the assignee can decline this inquiry',
+          );
+        if (row.assignmentStatus !== InquiryAssignmentStatus.PENDING)
+          throw new BadRequestException('Inquiry is not pending acceptance');
+        const previous = row.assignedToUserId;
+        row.assignedToUserId = null;
+        row.assignmentStatus = InquiryAssignmentStatus.DECLINED;
+        row.acceptedAt = null;
+        return previous;
+      },
+    );
     await this.notifications.onInquiryAssignmentResponse({
       ...this.inquiryNotifyPayload(row),
       actorUserId: userId,
@@ -485,66 +685,60 @@ export class InquiriesService {
     });
     return this.findOne(id);
   }
-
-  /**
-   * Firm demand (quoted → accepted): sales confirms the quote so production
-   * can plan against it. Sets status to QUOTED.
-   */
   async confirm(id: string, actorUserId: string) {
-    const row = await this.findOne(id);
-    if (
-      row.status === InquiryStatus.CANCELLED ||
-      row.status === InquiryStatus.CLOSED ||
-      row.status === InquiryStatus.CONVERTED
-    ) {
-      throw new BadRequestException(
-        `Cannot confirm inquiry in status ${row.status}`,
-      );
-    }
-    if (row.assignmentStatus === InquiryAssignmentStatus.PENDING) {
-      throw new BadRequestException(
-        'Accept the inquiry assignment before confirming the quote',
-      );
-    }
-    if (row.status === InquiryStatus.QUOTED) {
-      return row;
-    }
-
-    row.status = InquiryStatus.QUOTED;
-    const { lines: _lines, ...header } = row;
-    await this.repo.save(header);
-
-    await this.notifications.onInquiryConfirmed({
-      ...this.inquiryNotifyPayload(row),
-      actorUserId,
+    const { row, result: changed } = await this.transition(id, (row) => {
+      if (
+        !row.lines?.length ||
+        row.lines.some((l) => l.quantity == null || Number(l.quantity) <= 0)
+      )
+        throw new BadRequestException(
+          'Add products and requested quantities before confirming the inquiry',
+        );
+      if (
+        [
+          InquiryAssignmentStatus.PENDING,
+          InquiryAssignmentStatus.DECLINED,
+        ].includes(row.assignmentStatus)
+      )
+        throw new BadRequestException(
+          'Accept the inquiry assignment before confirming requirements',
+        );
+      if (row.status === InquiryStatus.QUOTED) return false;
+      row.status = InquiryStatus.QUOTED;
+      return true;
     });
-
+    if (changed)
+      await this.notifications.onInquiryConfirmed({
+        ...this.inquiryNotifyPayload(row),
+        actorUserId,
+      });
     return this.findOne(id);
   }
-
-  /** Pull from the unassigned pool (industry claim / self-assign). */
   async claim(id: string, userId: string) {
-    const row = await this.findOne(id);
-    if (
-      row.assignedToUserId &&
-      row.assignmentStatus === InquiryAssignmentStatus.ACCEPTED
-    ) {
-      throw new BadRequestException('Inquiry is already accepted by someone');
-    }
-    if (
-      row.assignedToUserId &&
-      row.assignmentStatus === InquiryAssignmentStatus.PENDING &&
-      row.assignedToUserId !== userId
-    ) {
-      throw new BadRequestException(
-        'Inquiry is pending acceptance by another user',
-      );
-    }
-    const previousAssigneeUserId = row.assignedToUserId;
-    this.applyAssigneeChange(row, userId, userId);
-    const { lines: _lines, ...header } = row;
-    await this.repo.save(header);
-    if (previousAssigneeUserId && previousAssigneeUserId !== userId) {
+    const { row, result: previousAssigneeUserId } = await this.transition(
+      id,
+      (row) => {
+        if (
+          row.assignedToUserId &&
+          row.assignmentStatus === InquiryAssignmentStatus.ACCEPTED
+        )
+          throw new BadRequestException(
+            'Inquiry is already accepted by someone',
+          );
+        if (
+          row.assignedToUserId &&
+          row.assignmentStatus === InquiryAssignmentStatus.PENDING &&
+          row.assignedToUserId !== userId
+        )
+          throw new BadRequestException(
+            'Inquiry is pending acceptance by another user',
+          );
+        const previous = row.assignedToUserId;
+        this.applyAssigneeChange(row, userId, userId);
+        return previous;
+      },
+    );
+    if (previousAssigneeUserId && previousAssigneeUserId !== userId)
       await this.notifications.onInquiryAssignmentChanged({
         ...this.inquiryNotifyPayload(row),
         assigneeUserId: userId,
@@ -552,13 +746,13 @@ export class InquiriesService {
         actorUserId: userId,
         assignmentStatus: row.assignmentStatus,
       });
-    }
     return this.findOne(id);
   }
 
   async findPublicCatalog(query: PublicCatalogQueryDto) {
     const qb = this.itemRepo
       .createQueryBuilder('item')
+      .leftJoinAndSelect('item.stockUnit', 'stockUnit')
       .where('item.is_active = true')
       .orderBy('item.description', 'ASC');
 
@@ -583,6 +777,10 @@ export class InquiriesService {
         id: item.id,
         sku: item.sku,
         description: item.description,
+        itemType: item.itemType,
+        unitId: item.unitId,
+        unit: item.stockUnit?.symbol ?? item.unit,
+        stockUnit: item.stockUnit,
         imageUrl: absoluteMediaUrl(item.imagePath, {
           publicBaseUrl: publicBase,
         }),
@@ -597,14 +795,20 @@ export class InquiriesService {
   }
 
   async remove(id: string) {
-    const row = await this.findOne(id);
-    if (row.status === InquiryStatus.CONVERTED) {
-      throw new BadRequestException(
-        'Converted inquiries cannot be deleted; mark CLOSED instead',
+    await this.db.transaction(async (manager) => {
+      await manager.query(
+        'SELECT id FROM customer_inquiries WHERE id=$1 FOR UPDATE',
+        [id],
       );
-    }
-    row.status = InquiryStatus.CANCELLED;
-    const { lines: _lines, ...header } = row;
-    return this.repo.save(header);
+      const repo = manager.getRepository(CustomerInquiry),
+        row = await repo.findOneBy({ id });
+      if (!row) throw new NotFoundException('Inquiry not found');
+      if (row.convertedSaleId || row.status === InquiryStatus.CONVERTED)
+        throw new BadRequestException(
+          'Converted inquiries cannot be cancelled; close them instead',
+        );
+      await repo.update(id, { status: InquiryStatus.CANCELLED });
+    });
+    return this.findOne(id);
   }
 }
