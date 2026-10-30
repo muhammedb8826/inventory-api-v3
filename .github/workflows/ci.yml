@@ -78,8 +78,9 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           mkdir -p release-payload
-          cp -R dist scripts release-payload/
-          cp package.json package-lock.json release-payload/
+          cp -R src scripts release-payload/
+          find release-payload/src -name "*.spec.ts" -delete
+          cp package.json package-lock.json nest-cli.json tsconfig.json tsconfig.build.json release-payload/
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         with:
@@ -122,11 +123,11 @@ jobs:
           FTP_PORT: ${{ vars.FTP_PORT }}
           FTP_TLS_VERIFY: ${{ vars.FTP_TLS_VERIFY || 'false' }}
           FTP_CA_CERT: ${{ secrets.FTP_CA_CERT }}
-          CPANEL_AUTO_RESTART: ${{ vars.CPANEL_AUTO_RESTART }}
+          CPANEL_AUTO_RESTART: 'false'
         run: python -u scripts/deploy-cpanel.py
       - name: Deployment summary
         run: |
           echo '### cPanel upload completed' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Only the tested release payload was uploaded. FTP cannot install dependencies or run migrations.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'If package dependencies changed, run NPM Install in cPanel. For API schema changes, back up and run migrations before restarting.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Restart in cPanel unless CPANEL_AUTO_RESTART=true is configured and host prerequisites are already satisfied.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Tested source and build configuration uploaded; dist is not uploaded.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'In cPanel Terminal run: npm install --include=dev, then npm run build. Back up and run migrations when needed.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Restart in cPanel only after the server build and required migrations succeed. Automatic upload-time restart is disabled.' >> "$GITHUB_STEP_SUMMARY"

@@ -1,6 +1,6 @@
 # cPanel deployment
 
-The `deploy` job in `.github/workflows/ci.yml` uploads the exact build that passed quality checks on pushes to `main` or `master`. Pull requests never deploy. To redeploy, run CI (API) or Quality (web) manually on the production branch. The SSH release workflow remains an optional alternative.
+The `deploy` job in `.github/workflows/ci.yml` uploads backend source and build configuration after quality checks pass on pushes to `main` or `master`. Pull requests never deploy. To redeploy, run CI (API) or Quality (web) manually on the production branch. The SSH release workflow remains an optional alternative.
 
 ## GitHub settings in each repository
 
@@ -15,7 +15,7 @@ Repository variables:
 - `FTP_PROTOCOL`: defaults to `ftps` (explicit TLS on port 21 with certificate verification). Set `ftp` only if your hosting account requires unencrypted FTP. SFTP is a different protocol and is not used here.
 - `FTP_PORT`: defaults to `21`.
 - `API_URL` (web): full public backend base URL, including `/api/v1`, used for build-time values. Set the runtime API_URL in cPanel as well.
-- `CPANEL_AUTO_RESTART`: defaults to disabled. Set `true` only when dependencies and database migrations are already ready on the host; the upload then writes Passenger's `tmp/restart.txt` last.
+- `CPANEL_AUTO_RESTART`: the backend source-upload workflow always disables automatic restart. Build on the server before manually restarting.
 
 The workflow uses repository secrets, not the separate SSH production environment. If you stored these secrets only under a GitHub environment, move/add them at repository level or explicitly configure that environment on the deploy job.
 
@@ -23,7 +23,16 @@ The workflow uses repository secrets, not the separate SSH production environmen
 
 Use Node 22 or later. Point Setup Node.js App at the existing FTP application directory. API startup file: `dist/main.js`. Web startup file: `server.js`. Keep production environment settings on the host: `.env` or cPanel environment variables. Never commit secrets. For the API use `DB_SYNCHRONIZE=false` and `DB_SEED=false`.
 
-FTP transfers files only. It cannot execute commands, install dependencies, back up the database, apply migrations, or verify application readiness. After the first deployment, and whenever dependencies change, use cPanel's Run NPM Install. If API schema changes are included, back up the database and run from the application directory in cPanel Terminal with the application's Node environment activated:
+The backend workflow uploads source rather than `dist`. After **every** backend upload, use cPanel Terminal with the application's Node environment activated:
+
+```sh
+npm install --include=dev
+npm run build
+```
+
+Build tools and type declarations remain in `devDependencies`; `--include=dev` installs them even with `NODE_ENV=production`. Do not use `--omit=dev` before building. `decimal.js` is already a runtime dependency and is installed by the same command. The Nest compiler clears the output directory, so schedule the build while the application is stopped or in a maintenance window. If the build fails, fix it and complete a successful build before restarting.
+
+For releases requiring migrations, back up first, then apply them using the completed build:
 
 ```sh
 NODE_ENV=production npm run backup
@@ -32,7 +41,7 @@ NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run:prod
 
 Then restart the application in cPanel and verify the API readiness endpoint (`/api/v1/health/ready`) and web login. Leave automatic restart disabled for releases requiring these manual steps. Backups need PostgreSQL client tools and the application's database credentials.
 
-The uploader overwrites only staged release files; it does not delete remote files. `.env`, `node_modules`, user uploads, logs, and host configuration are not included in the payload. API payload: `dist`, `scripts`, package manifests. Web payload: production `.next` (without cache/dev output), `public`, `server.js`, `next.config.mjs`, package manifests. Hidden production build files are explicitly retained in the GitHub artifact.
+The uploader overwrites only staged release files; it does not delete remote files. `.env`, `node_modules`, user uploads, logs, and host configuration are not included in the payload. API payload: `src` (excluding unit test files), `scripts`, `nest-cli.json`, `tsconfig.json`, `tsconfig.build.json`, and package manifests. Existing server `dist` is preserved during upload and replaced by the server build. Web payload: production `.next` (without cache/dev output), `public`, `server.js`, `next.config.mjs`, package manifests. Hidden production build files are explicitly retained in the GitHub artifact.
 
 An FTP upload is not atomic and has no automatic rollback. Deploy during a maintenance window when needed; retain a known-good backup. Obsolete remote files are intentionally preserved and may require a separate reviewed cleanup. Green upload status confirms file transfer, not successful application startup.
 
