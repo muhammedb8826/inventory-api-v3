@@ -138,6 +138,12 @@ export class InquiriesController {
     return this.service.confirm(id, user.sub);
   }
 
+  @Post(':id/close')
+  @RequirePermissions('inquiries.write')
+  close(@Param('id') id: string) {
+    return this.service.close(id);
+  }
+
   @Delete(':id')
   @RequirePermissions('inquiries.write')
   remove(@Param('id') id: string) {

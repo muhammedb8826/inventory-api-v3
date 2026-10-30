@@ -789,6 +789,7 @@ Rules:
 | POST | `/inquiries/:id/accept` | `inquiries.write` (assignee only) |
 | POST | `/inquiries/:id/decline` | `inquiries.write` (assignee only) |
 | POST | `/inquiries/:id/claim` | `inquiries.write` |
+| POST | `/inquiries/:id/close` | `inquiries.write` |
 | DELETE | `/inquiries/:id` | `inquiries.write` |
 
 **List query:** `page`, `limit`, `from`, `to`, `search` (name, email, phone, subject, message), `status`, `source` (`PUBLIC` \| `INTERNAL`), `priority`, `customerId`, `assignedToUserId`, `assignmentStatus`, `itemId` (matches any line).
@@ -1597,3 +1598,16 @@ Deploy backend source, install dependencies, build, back up, run NODE_ENV=produc
 Authenticated mutations record the server-authenticated actor in the append-only audit trail. Create requests link the returned record ID; record actions link the route record ID. Failed requests remain in the audit trail but never supply successful action attribution. Authorized business record responses include `createdBy` (existing creator is retained), `updatedBy`, and `actionUsers` keyed by action, such as `Received`, `Dispatched`, `Completed`, or `Cancelled`. Detail responses additionally include up to 100 recent `activity` entries with `action`, `user` (ID and name), and `at`. These are read-only, derived metadata and are not accepted as actor inputs. Full history remains under `/audit-events` with `settings.read`; that endpoint now returns `actor_name` and `action` alongside the stored IDs and request details. Old records with no recorded actor are not assigned an invented user.
 
 Deploy migration `1749190000000-RecordActivityIndex` to keep record history lookups indexed. No reseeding is required.
+
+
+### Inquiry pages and progressive actions
+
+The internal UI uses `/inquiries` for the list, `/inquiries/new` to create, `/inquiries/:id` for read-only details, and `/inquiries/:id/edit` to edit. Legacy `/inquiries?id=:id` links redirect to the details page. Notifications and production links use the canonical details route. Focused dialogs confirm state changes or choose a product/location for production; the full inquiry form is never rendered inside a modal.
+
+`GET /inquiries` includes `totals: { total, converted, byStatus }` for the complete filtered result set, independently of pagination. `converted` counts non-null sale links, including closed inquiries linked to sales. Counts use distinct inquiry IDs so multiple products cannot inflate them. Each row includes `hasProduction` for active linked production orders. Search matches reference ID (`INQ-` prefix is accepted), customer, product/SKU, and request text. Pagination orders by parent creation time and ID, not child product IDs.
+
+`GET /inquiries/:id` includes minimal `productionOrders` summaries (`id`, `orderNumber`, `status`, `finishedItemId`, `quantityPlanned`, `createdAt`) for links and progress. Component costs and production-line data are not exposed through these summaries. Item images have resolved `imageUrl` values. The linked sale is represented by its existing ID, not its financial data.
+
+The UI labels backend `QUOTED` as **Confirmed**, meaning requirements/firm demand, not a priced quotation. Claim/accept handles ownership, confirm validates quantified products, sale creation marks conversion, and production is an optional fulfillment branch. `POST /inquiries/:id/close` closes under a row lock, permits closing without a sale, and is idempotent for already closed inquiries. Cancelled inquiries cannot be closed, and closed inquiries cannot be cancelled or reopened. A status change through PATCH must use the matching workflow action (legacy closing via `CLOSED` remains accepted). Unchanged status echoes remain compatible. Edit requests omit `status` entirely to avoid overwriting newer workflow progress.
+
+Row actions and bulk actions use the same permissions/state rules. Workflow actions are displayed on details/list pages, while edit pages only save or discard changes. User attribution continues to be captured by the authenticated audit interceptor, including close actions. No database migration or reseeding is introduced by this page/workflow change.

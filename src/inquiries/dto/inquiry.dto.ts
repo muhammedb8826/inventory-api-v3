@@ -172,6 +172,12 @@ export class UpdateInquiryDto {
 
   @IsOptional()
   @IsEnum(InquiryStatus)
+  @ApiPropertyOptional({
+    enum: InquiryStatus,
+    deprecated: true,
+    description:
+      'Use the inquiry workflow actions to change status. Unchanged status echoes and legacy closing remain accepted.',
+  })
   status?: InquiryStatus;
 
   @IsOptional()

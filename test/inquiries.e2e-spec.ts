@@ -256,6 +256,92 @@ describe('Inquiry measurements and private reference files', () => {
     expect(catalog.body.data[0].quantity).toBeUndefined();
     expect(catalog.body.data[0].purchasePrice).toBeUndefined();
   });
+  it('summarizes all filtered records across pages without double-counting products', async () => {
+    const tag = 'Inquiry summary ' + randomUUID();
+    const records = [] as { id: string }[];
+    for (let i = 0; i < 3; i++)
+      records.push(
+        (
+          await call('post', '/inquiries', {
+            message: tag,
+            customerId,
+            lines: [
+              { itemId: fabricId, quantity: 1 },
+              { itemId: otherId, quantity: 1 },
+            ],
+          }).expect(201)
+        ).body,
+      );
+    await call('post', `/inquiries/${records[0].id}/claim`).expect(201);
+    await call('post', `/inquiries/${records[1].id}/confirm`).expect(201);
+    const result = (
+      await call(
+        'get',
+        `/inquiries?search=${encodeURIComponent(tag)}&limit=1`,
+      ).expect(200)
+    ).body;
+    expect(result.data).toHaveLength(1);
+    const nextPage = (
+      await call(
+        'get',
+        `/inquiries?search=${encodeURIComponent(tag)}&limit=1&page=2`,
+      ).expect(200)
+    ).body;
+    expect(nextPage.data[0].id).not.toBe(result.data[0].id);
+    expect(result.meta.total).toBe(3);
+    expect(result.totals).toEqual({
+      total: 3,
+      converted: 0,
+      byStatus: { NEW: 1, IN_PROGRESS: 1, QUOTED: 1 },
+    });
+    const filtered = (
+      await call(
+        'get',
+        `/inquiries?search=${encodeURIComponent(tag)}&status=QUOTED`,
+      ).expect(200)
+    ).body;
+    expect(filtered.meta.total).toBe(1);
+    expect(filtered.totals.byStatus).toEqual({ QUOTED: 1 });
+    const reference = (
+      await call(
+        'get',
+        `/inquiries?search=INQ-${records[0].id.slice(0, 8)}`,
+      ).expect(200)
+    ).body;
+    expect(
+      reference.data.some((r: { id: string }) => r.id === records[0].id),
+    ).toBe(true);
+  });
+  it('uses explicit workflow actions and closes without pretending a sale was created', async () => {
+    const source = (
+      await call('post', '/inquiries', { message: 'Review then close' }).expect(
+        201,
+      )
+    ).body;
+    await call('patch', `/inquiries/${source.id}`, { status: 'QUOTED' }).expect(
+      400,
+    );
+    const closed = (
+      await call('post', `/inquiries/${source.id}/close`).expect(201)
+    ).body;
+    expect(closed.status).toBe('CLOSED');
+    expect(closed.convertedSaleId).toBeNull();
+    expect(closed.actionUsers.Closed.id).toBe(source.createdById);
+    await call('post', `/inquiries/${source.id}/close`).expect(201);
+    await call('post', `/inquiries/${source.id}/claim`).expect(400);
+    await call('post', `/inquiries/${source.id}/confirm`).expect(400);
+    await call('delete', `/inquiries/${source.id}`).expect(400);
+    await call('patch', `/inquiries/${source.id}`, { status: 'NEW' }).expect(
+      400,
+    );
+    const cancelled = (
+      await call('post', '/inquiries', { message: 'Cancelled request' }).expect(
+        201,
+      )
+    ).body;
+    await call('delete', `/inquiries/${cancelled.id}`).expect(200);
+    await call('post', `/inquiries/${cancelled.id}/close`).expect(400);
+  });
   it('stores entered units and normalized stock quantities without moving inventory', async () => {
     await factor(50);
     const result = await inquiry(
@@ -458,6 +544,17 @@ describe('Inquiry measurements and private reference files', () => {
     expect(
       (await call('get', `/inquiries/${source.id}`)).body.convertedSaleId,
     ).toBeTruthy();
+    const closed = (
+      await call('post', `/inquiries/${source.id}/close`).expect(201)
+    ).body;
+    expect(closed.convertedSaleId).toBeTruthy();
+    const convertedSummary = (
+      await call(
+        'get',
+        `/inquiries?search=INQ-${source.id.slice(0, 8)}`,
+      ).expect(200)
+    ).body;
+    expect(convertedSummary.totals.converted).toBeGreaterThanOrEqual(1);
   });
   it('rejects stale inquiry line references and manual conversion status changes', async () => {
     const source = (
@@ -515,6 +612,23 @@ describe('Inquiry measurements and private reference files', () => {
     expect(order.body.quantityPlanned).toBe('100.000');
     expect(order.body.unitSnapshot.factor).toBe('50');
     expect(order.body.lines[0].quantityRequired).toBe('100.000');
+    const detail = (await call('get', `/inquiries/${source.id}`).expect(200))
+      .body;
+    expect(detail.productionOrders).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: order.body.id, status: 'DRAFT' }),
+      ]),
+    );
+    expect(detail.productionOrders[0].lines).toBeUndefined();
+    const list = (
+      await call(
+        'get',
+        `/inquiries?search=INQ-${source.id.slice(0, 8)}`,
+      ).expect(200)
+    ).body;
+    expect(
+      list.data.find((r: { id: string }) => r.id === source.id).hasProduction,
+    ).toBe(true);
   });
   it('stores reference files privately, deduplicates retries and rejects invalid files', async () => {
     const source = (

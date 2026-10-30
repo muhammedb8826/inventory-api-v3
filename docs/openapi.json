@@ -4458,7 +4458,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerInquiry"
+                  "type": "object"
                 }
               }
             }
@@ -4532,7 +4532,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerInquiry"
+                  "type": "object"
                 }
               }
             }
@@ -4570,7 +4570,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerInquiry"
+                  "type": "object"
                 }
               }
             }
@@ -4598,7 +4598,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerInquiry"
+                  "type": "object"
                 }
               }
             }
@@ -4744,7 +4744,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerInquiry"
+                  "type": "object"
                 }
               }
             }
@@ -4774,7 +4774,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerInquiry"
+                  "type": "object"
                 }
               }
             }
@@ -4804,7 +4804,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerInquiry"
+                  "type": "object"
                 }
               }
             }
@@ -4834,13 +4834,43 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerInquiry"
+                  "type": "object"
                 }
               }
             }
           }
         },
         "summary": "Firm demand: mark inquiry as QUOTED so production can plan against it.",
+        "tags": [
+          "Inquiries"
+        ]
+      }
+    },
+    "/api/v1/inquiries/{id}/close": {
+      "post": {
+        "operationId": "InquiriesController_close",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Inquiries"
         ]
@@ -10105,6 +10135,7 @@
             "type": "string"
           },
           "status": {
+            "type": "string",
             "enum": [
               "NEW",
               "IN_PROGRESS",
@@ -10112,24 +10143,23 @@
               "CONVERTED",
               "CLOSED",
               "CANCELLED"
-            ],
-            "type": "string"
+            ]
           },
           "priority": {
+            "type": "string",
             "enum": [
               "LOW",
               "NORMAL",
               "HIGH",
               "URGENT"
-            ],
-            "type": "string"
+            ]
           },
           "source": {
+            "type": "string",
             "enum": [
               "PUBLIC",
               "INTERNAL"
-            ],
-            "type": "string"
+            ]
           },
           "customerId": {
             "type": "string",
@@ -10140,13 +10170,13 @@
             "nullable": true
           },
           "assignmentStatus": {
+            "type": "string",
             "enum": [
               "UNASSIGNED",
               "PENDING",
               "ACCEPTED",
               "DECLINED"
-            ],
-            "type": "string"
+            ]
           },
           "assignedAt": {
             "format": "date-time",
@@ -11224,6 +11254,19 @@
             "deprecated": true,
             "description": "Legacy clients may echo the unchanged link. It cannot be assigned or cleared here."
           },
+          "status": {
+            "enum": [
+              "NEW",
+              "IN_PROGRESS",
+              "QUOTED",
+              "CONVERTED",
+              "CLOSED",
+              "CANCELLED"
+            ],
+            "type": "string",
+            "deprecated": true,
+            "description": "Use the inquiry workflow actions to change status. Unchanged status echoes and legacy closing remain accepted."
+          },
           "contactName": {
             "type": "string",
             "minLength": 1,
@@ -11248,17 +11291,6 @@
           "message": {
             "type": "string",
             "maxLength": 20000
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "NEW",
-              "IN_PROGRESS",
-              "QUOTED",
-              "CONVERTED",
-              "CLOSED",
-              "CANCELLED"
-            ]
           },
           "priority": {
             "type": "string",

@@ -11,7 +11,7 @@ export function actionLabel(method: string, route: string): string {
     return 'Cancelled';
   if (method === 'DELETE' && /^\/(sales|purchases)\/:id$/.test(normalized))
     return 'Voided';
-  if (normalized === '/inquiries/:id/confirm') return 'Quote confirmed';
+  if (normalized === '/inquiries/:id/confirm') return 'Requirements confirmed';
   const action =
     route
       .split('/')
@@ -25,6 +25,7 @@ export function actionLabel(method: string, route: string): string {
     approve: 'Approved',
     complete: 'Completed',
     cancel: 'Cancelled',
+    close: 'Closed',
     confirm: 'Confirmed',
     'confirm-quote': 'Quote confirmed',
     accept: 'Accepted',

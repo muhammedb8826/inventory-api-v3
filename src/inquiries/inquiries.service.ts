@@ -27,6 +27,7 @@ import { CustomerInquiryLine } from '../database/entities/customer-inquiry-line.
 import { CustomerInquiry } from '../database/entities/customer-inquiry.entity';
 import { Item } from '../database/entities/item.entity';
 import { Sale } from '../database/entities/sale.entity';
+import { ProductionOrder } from '../database/entities/production-order.entity';
 import { User } from '../database/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -236,7 +237,7 @@ export class InquiriesService {
       .leftJoinAndSelect('i.assignedTo', 'assignedTo')
       .leftJoinAndSelect('i.createdBy', 'createdBy')
       .orderBy('i.createdAt', 'DESC')
-      .addOrderBy('lines.id', 'ASC');
+      .addOrderBy('i.id', 'DESC');
 
     if (query.status) {
       qb.andWhere('i.status = :status', { status: query.status });
@@ -273,13 +274,19 @@ export class InquiriesService {
     }
 
     if (query.search?.trim()) {
-      const search = `%${query.search.trim()}%`;
+      const search = `%${query.search.trim().replace(/^INQ-/i, '')}%`;
       qb.andWhere(
         `(i.contact_name ILIKE :search
           OR i.email ILIKE :search
           OR i.phone ILIKE :search
           OR i.subject ILIKE :search
-          OR i.message ILIKE :search)`,
+          OR i.message ILIKE :search
+          OR customer.name ILIKE :search
+          OR i.id::text ILIKE :search
+          OR EXISTS (SELECT 1 FROM customer_inquiry_lines search_line
+            JOIN items search_item ON search_item.id = search_line.item_id
+            WHERE search_line.inquiry_id=i.id AND
+              (search_item.description ILIKE :search OR search_item.sku ILIKE :search)))`,
         { search },
       );
     }
@@ -290,19 +297,58 @@ export class InquiriesService {
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
-    return qb
+    const summary = qb
+      .clone()
+      .select('i.status', 'status')
+      .addSelect('COUNT(DISTINCT i.id)::int', 'count')
+      .addSelect(
+        'COUNT(DISTINCT i.id) FILTER (WHERE i.converted_sale_id IS NOT NULL)::int',
+        'converted',
+      )
+      .groupBy('i.status')
+      .orderBy()
+      .getRawMany<{ status: string; count: number; converted: number }>();
+    const records = qb
       .skip((page - 1) * limit)
       .take(limit)
-      .getManyAndCount()
-      .then(([data, total]) => ({
-        data,
-        meta: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit) || 1,
-        },
-      }));
+      .getManyAndCount();
+    return Promise.all([records, summary]).then(
+      async ([[data, total], counts]) => {
+        const activeProduction = data.length
+          ? await this.db
+              .getRepository(ProductionOrder)
+              .createQueryBuilder('production')
+              .select('production.inquiryId', 'inquiryId')
+              .where('production.inquiryId IN (:...ids)', {
+                ids: data.map((r) => r.id),
+              })
+              .andWhere('production.status <> :cancelled', {
+                cancelled: 'CANCELLED',
+              })
+              .groupBy('production.inquiryId')
+              .getRawMany<{ inquiryId: string }>()
+          : [];
+        const productionIds = new Set(activeProduction.map((p) => p.inquiryId));
+        return {
+          data: data.map((row) =>
+            Object.assign(row, { hasProduction: productionIds.has(row.id) }),
+          ),
+          totals: {
+            total,
+            converted: counts.reduce((sum, c) => sum + Number(c.converted), 0),
+            byStatus: Object.fromEntries(
+              counts.map((c) => [c.status, Number(c.count)]),
+            ),
+          },
+          meta: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit) || 1,
+          },
+        };
+      },
+    );
   }
 
   async findOne(id: string) {
@@ -313,13 +359,48 @@ export class InquiriesService {
         lines: { item: true },
         assignedTo: true,
         createdBy: true,
-        convertedSale: true,
         attachments: true,
       },
       order: { lines: { id: 'ASC' } },
     });
     if (!row) throw new NotFoundException('Inquiry not found');
-    return row;
+    for (const line of row.lines ?? []) {
+      if (line.item)
+        Object.assign(line.item, {
+          imageUrl: absoluteMediaUrl(line.item.imagePath, {
+            publicBaseUrl: publicBaseFromConfig(this.config),
+          }),
+        });
+    }
+    const productionOrders = await this.db.getRepository(ProductionOrder).find({
+      where: { inquiryId: id },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        finishedItemId: true,
+        quantityPlanned: true,
+        createdAt: true,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    return Object.assign(row, { productionOrders });
+  }
+
+  async close(id: string) {
+    await this.db.transaction(async (manager) => {
+      const row = await manager
+        .getRepository(CustomerInquiry)
+        .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!row) throw new NotFoundException('Inquiry not found');
+      if (row.status === InquiryStatus.CANCELLED)
+        throw new BadRequestException('A cancelled inquiry cannot be closed');
+      if (row.status !== InquiryStatus.CLOSED)
+        await manager
+          .getRepository(CustomerInquiry)
+          .update(id, { status: InquiryStatus.CLOSED });
+    });
+    return this.findOne(id);
   }
 
   private async createRequest(
@@ -430,6 +511,15 @@ export class InquiriesService {
         const repo = manager.getRepository(CustomerInquiry);
         const row = await repo.findOneBy({ id });
         if (!row) throw new NotFoundException('Inquiry not found');
+        if (
+          dto.status !== undefined &&
+          dto.status !== row.status &&
+          (dto.status !== InquiryStatus.CLOSED ||
+            row.status === InquiryStatus.CANCELLED)
+        )
+          throw new BadRequestException(
+            'Use the inquiry workflow actions to change its status',
+          );
         if (dto.status === InquiryStatus.CONVERTED && !row.convertedSaleId)
           throw new BadRequestException(
             'Create a sale from this inquiry to mark it converted',
@@ -807,6 +897,8 @@ export class InquiriesService {
         throw new BadRequestException(
           'Converted inquiries cannot be cancelled; close them instead',
         );
+      if (row.status === InquiryStatus.CLOSED)
+        throw new BadRequestException('A closed inquiry cannot be cancelled');
       await repo.update(id, { status: InquiryStatus.CANCELLED });
     });
     return this.findOne(id);

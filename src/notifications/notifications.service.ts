@@ -460,7 +460,7 @@ export class NotificationsService {
       module: 'inquiries' as const,
       type: NotificationType.INQUIRY,
       title: 'Inquiry confirmed — firm demand',
-      message: `"${params.subject}" is quoted/accepted and ready for production planning`,
+      message: `Requirements for "${params.subject}" are confirmed. Fulfill from stock or plan production.`,
       entityType: 'inquiry',
       entityId: params.inquiryId,
       metadata: {
