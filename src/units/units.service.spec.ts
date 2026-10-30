@@ -9,12 +9,14 @@ describe('custom item conversions', () => {
       id: 'base',
       code: baseCode,
       category: 'LENGTH',
+      isActive: true,
       decimalPlaces: 3,
     };
     const cm = {
       id: 'cm',
       code: 'CM',
       category: 'LENGTH',
+      isActive: true,
       decimalPlaces: 3,
       isActive: true,
     };
@@ -50,23 +52,34 @@ describe('custom item conversions', () => {
     jest.spyOn(service, 'itemOptions').mockResolvedValue({} as never);
     return { service, save, item };
   }
-  it('saves a custom 1 metre to 50 centimetres rule', async () => {
+  it('rejects redefining standard centimetres', async () => {
+    const { service, save } = setup();
+    await expect(
+      service.configureItem('item', {
+        conversions: [{ unitId: 'cm', stockQuantity: 1, unitQuantity: 50 }],
+      }),
+    ).rejects.toThrow('standard conversion is fixed');
+    expect(save).not.toHaveBeenCalled();
+  });
+  it('requires an explicit shared packaging profile for cross-category packages', async () => {
+    const { service, save } = setup();
+    await expect(
+      service.configureItem('item', {
+        conversions: [{ unitId: 'pack', factor: 10 }],
+      }),
+    ).rejects.toThrow('packaging profile');
+    expect(save).not.toHaveBeenCalled();
+  });
+  it('accepts the standard centimetre ratio', async () => {
     const { service, save } = setup();
     await service.configureItem('item', {
-      conversions: [{ unitId: 'cm', stockQuantity: 1, unitQuantity: 50 }],
+      conversions: [{ unitId: 'cm', factor: 0.01 }],
     });
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({
-        unitConversions: [expect.objectContaining({ factor: '0.02' })],
+        unitConversions: [expect.objectContaining({ factor: '0.01' })],
       }),
     );
-  });
-  it('allows explicit cross-category packaging ratios', async () => {
-    const { service, save } = setup();
-    await service.configureItem('item', {
-      conversions: [{ unitId: 'pack', factor: 10 }],
-    });
-    expect(save).toHaveBeenCalled();
   });
   it('rejects redefining the base unit itself', async () => {
     const { service, save, item } = setup();

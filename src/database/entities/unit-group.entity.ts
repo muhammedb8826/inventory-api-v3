@@ -13,6 +13,9 @@ import type { ItemConversion } from '../../units/conversion';
 export class UnitGroup extends UuidBaseEntity {
   @Column({ length: 100, unique: true }) name: string;
   @Column({ length: 20 }) category: string;
+  @Column({ type: 'varchar', length: 20, default: 'CATEGORY' }) kind:
+    | 'CATEGORY'
+    | 'PACKAGING';
   @Column({ name: 'base_unit_id', type: 'uuid' }) baseUnitId: string;
   @ManyToOne(() => UnitOfMeasure, { eager: true })
   @JoinColumn({ name: 'base_unit_id' })

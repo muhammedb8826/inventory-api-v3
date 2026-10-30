@@ -87,6 +87,7 @@ describe('Inquiry measurements and private reference files', () => {
       await call('post', '/units/groups', {
         name: 'Roll group ' + randomUUID(),
         category: 'LENGTH',
+        kind: 'PACKAGING',
         baseUnitId: u('M'),
         conversions: [
           { unitId: u('ROLL'), factor: 50 },
@@ -105,6 +106,7 @@ describe('Inquiry measurements and private reference files', () => {
     await call('patch', '/units/groups/' + groupId, {
       name: 'Roll group ' + groupId,
       category: 'LENGTH',
+      kind: 'PACKAGING',
       baseUnitId: u('M'),
       conversions: [
         { unitId: u('ROLL'), factor: value },
@@ -404,7 +406,7 @@ describe('Inquiry measurements and private reference files', () => {
       category: 'AREA',
       baseUnitId: u('CM2'),
       conversions: [{ unitId: u('M2'), factor: 20000 }],
-    }).expect(200);
+    }).expect(400);
     await call('post', `/inquiries/${result.body.id}/confirm`).expect(201);
     const areaSale = await call('post', '/sales', {
       inquiryId: result.body.id,

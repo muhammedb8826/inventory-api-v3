@@ -144,6 +144,17 @@ export class ProductionService {
       throw new BadRequestException('BOM has no component lines');
     }
     this.assertBomEffective(bom);
+    if (inquirySnapshot)
+      await normalizeLine(
+        this.orderRepo.manager,
+        bom.finishedItemId,
+        {
+          quantity: Number(inquirySnapshot.quantity),
+          unitId: inquirySnapshot.unitId,
+          dimensions: inquirySnapshot.dimensions,
+        },
+        inquirySnapshot,
+      );
     const normalized = inquirySnapshot
       ? { quantity: dto.quantityPlanned, unitSnapshot: inquirySnapshot }
       : await normalizeLine(this.orderRepo.manager, bom.finishedItemId, {

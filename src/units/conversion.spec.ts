@@ -64,7 +64,7 @@ describe('unit conversions', () => {
       ]),
     ).toHaveLength(1);
   });
-  it('prioritizes custom measurement ratios and restores standards when removed', () => {
+  it('flags and hides nonstandard overrides rather than redefining centimetres', () => {
     const m = unit('m', 'M', 'LENGTH'),
       cm = unit('cm', 'CM', 'LENGTH');
     const item = Object.assign(new Item(), {
@@ -72,12 +72,9 @@ describe('unit conversions', () => {
       stockUnit: m,
       unitConversions: [{ unitId: cm.id, factor: '0.02' }],
     });
-    const option = conversionOptions(item, [m, cm]).find(
-      (o) => o.unit.id === cm.id,
-    )!;
-    expect(option.factor).toBe('0.02');
-    expect(option.isStandard).toBe(false);
-    expect(convertQuantity(50, option.factor, cm, m)).toBe(1);
+    expect(conversionOptions(item, [m, cm]).map((o) => o.unit.id)).toEqual([
+      m.id,
+    ]);
     item.unitConversions = [];
     expect(
       conversionOptions(item, [m, cm]).find((o) => o.unit.id === cm.id)?.factor,
@@ -90,6 +87,9 @@ describe('unit conversions', () => {
   });
   it('reuses group ratios across items and excludes unrelated units', () => {
     const group = {
+      category: 'COUNT',
+      baseUnitId: pcs.id,
+      kind: 'CATEGORY',
       conversions: [{ unitId: box.id, factor: '10', purchaseDefault: true }],
     };
     for (const id of ['first', 'second']) {
@@ -116,7 +116,11 @@ describe('unit conversions', () => {
       id: 'cloth',
       unitId: cm2.id,
       stockUnit: cm2,
-      unitGroup: { conversions: [{ unitId: m2.id, factor: '10000' }] },
+      unitGroup: {
+        category: 'AREA',
+        baseUnitId: cm2.id,
+        conversions: [{ unitId: m2.id, factor: '10000' }],
+      },
     });
     const manager = {
       getRepository: (entity: unknown) =>
@@ -148,9 +152,9 @@ describe('unit conversions', () => {
       }),
     ).toBe(1);
   });
-  it('preserves exact piece-to-area ratios without entering a rounded reciprocal', () => {
+  it('preserves exact custom count ratios without entering a rounded reciprocal', () => {
     const factor = itemConversionFactor({ stockQuantity: 1, unitQuantity: 3 });
-    const area = unit('area', 'M2', 'AREA');
+    const area = unit('third', 'THIRD', 'COUNT');
     expect(convertQuantity(6, factor, area, pcs)).toBe(2);
     expect(convertQuantity(30000000000, factor, area, pcs)).toBe(10000000000);
     expect(() => convertQuantity(1, factor, area, pcs)).toThrow('whole number');

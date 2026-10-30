@@ -1673,7 +1673,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/UnitGroup"
+                    "type": "object"
                   }
                 }
               }
@@ -7733,6 +7733,13 @@
           "category": {
             "type": "string"
           },
+          "kind": {
+            "enum": [
+              "CATEGORY",
+              "PACKAGING"
+            ],
+            "type": "string"
+          },
           "baseUnitId": {
             "type": "string"
           },
@@ -7763,6 +7770,7 @@
         "required": [
           "name",
           "category",
+          "kind",
           "baseUnitId",
           "baseUnit",
           "conversions",
@@ -8498,6 +8506,13 @@
       "SaveUnitGroupDto": {
         "type": "object",
         "properties": {
+          "kind": {
+            "enum": [
+              "CATEGORY",
+              "PACKAGING"
+            ],
+            "type": "string"
+          },
           "name": {
             "type": "string",
             "minLength": 1,

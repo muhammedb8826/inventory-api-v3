@@ -29,38 +29,13 @@ export interface UnitSnapshot {
   quantity: string;
   unitPrice?: string;
 }
-// Reference quantities in kg, metres, litres, square/cubic metres and hours.
-const STANDARD: Record<string, [string, string]> = {
-  KG: ['MASS', '1'],
-  G: ['MASS', '0.001'],
-  MG: ['MASS', '0.000001'],
-  M: ['LENGTH', '1'],
-  CM: ['LENGTH', '0.01'],
-  MM: ['LENGTH', '0.001'],
-  M2: ['AREA', '1'],
-  CM2: ['AREA', '0.0001'],
-  M3: ['VOLUME', '1000'],
-  L: ['VOLUME', '1'],
-  ML: ['VOLUME', '0.001'],
-  H: ['TIME', '1'],
-  MIN: ['TIME', '0.016666666666666667'],
-};
-export function standardFactor(
-  from: UnitOfMeasure,
-  to: UnitOfMeasure,
-): string | null {
-  const a = STANDARD[from.code],
-    b = STANDARD[to.code];
-  if (
-    !a ||
-    !b ||
-    a[0] !== from.category ||
-    b[0] !== to.category ||
-    a[0] !== b[0]
-  )
-    return null;
-  return new ConversionDecimal(a[1]).div(b[1]).toString();
-}
+export { standardFactor } from './unit-rules';
+import {
+  assertConversion,
+  groupIssues,
+  standardFactor,
+  unitDefinitionIssue,
+} from './unit-rules';
 export function itemConversionFactor(entry: {
   factor?: number;
   stockQuantity?: number;
@@ -98,9 +73,21 @@ export function itemConversionFactor(entry: {
   return String(entry.factor);
 }
 export function conversionOptions(item: Item, units: UnitOfMeasure[]) {
+  const invalid =
+    groupIssues(
+      item.unitGroup ?? {
+        baseUnitId: item.unitId,
+        category: item.stockUnit.category,
+        conversions: item.unitConversions ?? [],
+      },
+      units,
+    ).length > 0;
+  if (unitDefinitionIssue(item.stockUnit)) return [];
+
   return units
     .filter((u) => (u.isActive && !u.requiresReview) || u.id === item.unitId)
     .flatMap((unit) => {
+      if (invalid && unit.id !== item.unitId) return [];
       const configured = (
         item.unitGroup
           ? item.unitGroup.conversions
@@ -151,6 +138,7 @@ export async function normalizeLine<
   itemId: string,
   line: T,
   original?: UnitSnapshot | null,
+  preserveHistorical = false,
 ): Promise<T & { unitSnapshot: UnitSnapshot }> {
   const item = await manager
     .getRepository(Item)
@@ -182,6 +170,24 @@ export async function normalizeLine<
     if (!unit)
       throw new BadRequestException(
         'The original inquiry unit is no longer active',
+      );
+    if (!preserveHistorical)
+      assertConversion(
+        fresh.stockUnit,
+        Object.assign(new UnitOfMeasure(), unit, {
+          code: frozen.code,
+          category: frozen.category ?? unit.category,
+        }),
+        frozen.factor,
+        fresh.unitGroup?.kind,
+      );
+    if (
+      !preserveHistorical &&
+      fresh.unitGroup &&
+      groupIssues(fresh.unitGroup, units).length
+    )
+      throw new BadRequestException(
+        'Review the item unit configuration before creating new documents',
       );
     option = {
       unit: Object.assign(new UnitOfMeasure(), unit, {

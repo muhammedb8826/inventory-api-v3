@@ -311,16 +311,7 @@ describe('Inventory API smoke (e2e)', () => {
         .patch(`${API}/units/items/${itemId}`)
         .set(auth)
         .send({ conversions: [{ unitId: id('M'), factor: 2 }] })
-        .expect(200);
-      const customOptions = await request(server)
-        .get(`${API}/units/items/${itemId}`)
-        .set(auth)
-        .expect(200);
-      expect(
-        customOptions.body.options.find(
-          (o: { unit: { id: string } }) => o.unit.id === id('M'),
-        ).factor,
-      ).toBe('2');
+        .expect(400);
       await settings(12).expect(200);
       const purchase = (
         await request(server)
@@ -458,7 +449,7 @@ describe('Inventory API smoke (e2e)', () => {
         .patch(`${API}/units/items/${mass.itemId}`)
         .set(auth)
         .send({ conversions: [{ unitId: id('G'), factor: 2 }] })
-        .expect(200);
+        .expect(400);
       await request(server)
         .patch(`${API}/units/items/${mass.itemId}`)
         .set(auth)
@@ -570,9 +561,7 @@ describe('Inventory API smoke (e2e)', () => {
         .patch(`${API}/units/items/${empty.itemId}`)
         .set(auth)
         .send({
-          conversions: [
-            { unitId: unitId('PCS'), stockQuantity: 3, unitQuantity: 1 },
-          ],
+          conversions: [{ unitId: unitId('CM2'), factor: 0.0001 }],
         })
         .expect(200);
       await request(server)
@@ -590,6 +579,19 @@ describe('Inventory API smoke (e2e)', () => {
         .set(auth)
         .send({ unitId: unitId('PCS') })
         .expect(200);
+      const alternative = (
+        await request(server)
+          .post(`${API}/units`)
+          .set(auth)
+          .send({
+            code: `THIRD_${Date.now()}`,
+            name: 'Third of a piece',
+            symbol: 'third',
+            category: 'COUNT',
+            decimalPlaces: 0,
+          })
+          .expect(201)
+      ).body;
       const stocked = await create(20);
       const configure = (unitQuantity: number) =>
         request(server)
@@ -598,7 +600,7 @@ describe('Inventory API smoke (e2e)', () => {
           .send({
             conversions: [
               {
-                unitId: unitId('M2'),
+                unitId: alternative.id,
                 stockQuantity: 1,
                 unitQuantity,
                 salesDefault: true,
@@ -637,7 +639,7 @@ describe('Inventory API smoke (e2e)', () => {
         lines: [
           {
             itemId: stocked.itemId,
-            unitId: unitId('M2'),
+            unitId: alternative.id,
             quantity: 6,
             unitPrice: 30,
           },
@@ -664,7 +666,11 @@ describe('Inventory API smoke (e2e)', () => {
         .set(auth)
         .send({
           lines: [
-            { saleLineId: sale.lines[0].id, unitId: unitId('M2'), quantity: 6 },
+            {
+              saleLineId: sale.lines[0].id,
+              unitId: alternative.id,
+              quantity: 6,
+            },
           ],
         })
         .expect(201);

@@ -163,6 +163,7 @@ export class InquiriesService {
             line.itemId,
             { ...line, quantity: line.quantity },
             unchanged ? previous : undefined,
+            !!unchanged,
           ),
         );
       }

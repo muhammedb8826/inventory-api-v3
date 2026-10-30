@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { setupApp } from '../src/setup-app';
 import { Item, Location } from '../src/database/entities';
 import { UnitOfMeasure } from '../src/database/entities/unit-of-measure.entity';
+import { UnitGroup } from '../src/database/entities/unit-group.entity';
 import { LocationType } from '../src/common/enums';
 import { StockService } from '../src/inventory/stock.service';
 const PCS = '10000000-0000-4000-8000-000000000001';
@@ -68,6 +69,89 @@ describe('Structured units (isolated PostgreSQL)', () => {
         expect.objectContaining({ id: KG, code: 'KG', decimalPlaces: 3 }),
       ]),
     );
+  });
+  it('separates standard categories from explicit packaging profiles and flags legacy mixes', async () => {
+    const call = (
+      method: 'get' | 'post' | 'patch',
+      path: string,
+      body?: object,
+    ) => {
+      const r = request(app.getHttpServer())
+        [method]('/api/v1' + path)
+        .auth(token, { type: 'bearer' });
+      return body ? r.send(body) : r;
+    };
+    const units = (await call('get', '/units').expect(200))
+      .body as UnitOfMeasure[];
+    const id = (code: string) => units.find((u) => u.code === code)!.id;
+    const definition = {
+      name: 'Boundary ' + randomUUID(),
+      category: 'LENGTH',
+      baseUnitId: id('M'),
+      conversions: [{ unitId: KG, factor: 2 }],
+    };
+    await call('post', '/units/groups', {
+      ...definition,
+      baseUnitId: KG,
+    }).expect(400);
+    await call('post', '/units/groups', definition).expect(400);
+    await call('post', '/units/groups', {
+      ...definition,
+      kind: 'PACKAGING',
+    }).expect(400);
+    await call('post', '/units/groups', {
+      ...definition,
+      conversions: [{ unitId: id('CM'), factor: 0.02 }],
+    }).expect(400);
+    await call('patch', `/units/${id('M')}`, { category: 'MASS' }).expect(400);
+    const legacy = await db.getRepository(UnitGroup).save(
+      db.getRepository(UnitGroup).create({
+        ...definition,
+        conversions: [{ unitId: KG, factor: '2' }],
+      }),
+    );
+    const groups = (await call('get', '/units/groups').expect(200)).body;
+    expect(
+      groups.find((g: { id: string }) => g.id === legacy.id).requiresReview,
+    ).toBe(true);
+    await post({ unitGroupId: legacy.id, unitId: id('M') }).expect(400);
+    const existing = (await post({ unitId: id('M'), quantity: 10 }).expect(201))
+      .body;
+    await db.query('UPDATE items SET unit_group_id=$1 WHERE id=$2', [
+      legacy.id,
+      existing.itemId,
+    ]);
+    const context = (
+      await call('get', `/units/items/${existing.itemId}`).expect(200)
+    ).body;
+    expect(context.requiresReview).toBe(true);
+    expect(
+      context.options.map((o: { unit: { id: string } }) => o.unit.id),
+    ).toEqual([id('M')]);
+    await call('post', '/inquiries', {
+      lines: [{ itemId: existing.itemId, unitId: KG, quantity: 1 }],
+    }).expect(400);
+    const repaired = (
+      await call('patch', `/units/groups/${legacy.id}`, {
+        ...definition,
+        kind: 'PACKAGING',
+        conversions: [
+          { unitId: id('ROLL'), factor: 50 },
+          { unitId: id('CM'), factor: 0.01 },
+        ],
+      }).expect(200)
+    ).body;
+    expect(repaired.kind).toBe('PACKAGING');
+    const future = (
+      await call('post', '/inquiries', {
+        lines: [{ itemId: existing.itemId, unitId: id('ROLL'), quantity: 2 }],
+      }).expect(201)
+    ).body;
+    expect(future.lines[0].quantity).toBe('100.000');
+    expect(
+      (await call('get', `/inventory/${existing.id}`).expect(200)).body
+        .quantity,
+    ).toBe('10.000');
   });
   it('requires a known unit and rejects fractional pieces and excess precision', async () => {
     await post({}).expect(400);

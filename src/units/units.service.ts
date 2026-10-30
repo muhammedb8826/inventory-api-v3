@@ -14,6 +14,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { UnitOfMeasure } from '../database/entities/unit-of-measure.entity';
 import { CreateUnitDto, UpdateUnitDto } from './dto/unit.dto';
+import {
+  assertConversion,
+  groupIssues,
+  standardFactor,
+  STANDARD_UNITS,
+  unitDefinitionIssue,
+} from './unit-rules';
 @Injectable()
 export class UnitsService {
   constructor(
@@ -22,12 +29,27 @@ export class UnitsService {
     private readonly db: DataSource,
   ) {}
   async groups() {
-    return this.db.getRepository(UnitGroup).find({ order: { name: 'ASC' } });
+    const groups = await this.db
+      .getRepository(UnitGroup)
+      .find({ order: { name: 'ASC' } });
+    const units = await this.list();
+    return groups.map((g) => {
+      const reviewIssues = groupIssues(g, units);
+      return Object.assign(g, {
+        requiresReview: !!reviewIssues.length,
+        reviewIssues,
+      });
+    });
   }
   async group(id: string) {
     const group = await this.db.getRepository(UnitGroup).findOneBy({ id });
     if (!group || !group.isActive)
       throw new BadRequestException('Select an active unit group');
+    const issues = groupIssues(group, await this.list());
+    if (issues.length)
+      throw new BadRequestException(
+        `Review this unit configuration before assigning it: ${issues[0]}`,
+      );
     return group;
   }
   async saveGroup(id: string | undefined, dto: SaveUnitGroupDto) {
@@ -46,6 +68,13 @@ export class UnitsService {
       );
       if (!base)
         throw new BadRequestException('Select an active reviewed base unit');
+      if (base.category !== dto.category)
+        throw new BadRequestException(
+          'The reference unit must belong to the selected measurement category',
+        );
+      const kind = dto.kind ?? existing?.kind ?? 'CATEGORY';
+      const definition = unitDefinitionIssue(base);
+      if (definition) throw new BadRequestException(definition);
       if (existing && existing.baseUnitId !== base.id) {
         const [{ used }] = await manager.query(
           'SELECT EXISTS(SELECT 1 FROM items WHERE unit_group_id=$1) AS used',
@@ -84,9 +113,11 @@ export class UnitsService {
             'Alternative reference quantity',
           );
         }
+        const factor = itemConversionFactor(entry);
+        assertConversion(base, unit, factor, kind);
         return {
           unitId: entry.unitId,
-          factor: itemConversionFactor(entry),
+          factor: standardFactor(unit, base) ?? factor,
           ...(entry.stockQuantity != null
             ? {
                 stockQuantity: String(entry.stockQuantity),
@@ -102,12 +133,18 @@ export class UnitsService {
           throw new BadRequestException(
             'Choose one default per transaction type',
           );
+      const issues = groupIssues(
+        { category: dto.category, baseUnitId: base.id, kind, conversions },
+        units,
+      );
+      if (issues.length) throw new BadRequestException(issues[0]);
       try {
         return await repo.save(
           repo.create({
             ...(existing ?? {}),
             name: dto.name.trim(),
             category: dto.category,
+            kind,
             baseUnitId: base.id,
             baseUnit: base,
             conversions,
@@ -132,7 +169,18 @@ export class UnitsService {
       [id],
     );
     const configured = (item.unitConversions?.length ?? 0) > 0;
+    const units = await this.list();
+    const reviewIssues = groupIssues(
+      item.unitGroup ?? {
+        baseUnitId: item.unitId,
+        category: item.stockUnit.category,
+        conversions: item.unitConversions ?? [],
+      },
+      units,
+    );
     return {
+      requiresReview: !!reviewIssues.length,
+      reviewIssues,
       canChangeBaseUnit: !inUse && !configured,
       baseUnitLockReason: inUse
         ? 'Stock unit is protected by stock, movements or related documents. Use an alternative conversion for future transactions.'
@@ -141,7 +189,7 @@ export class UnitsService {
           : null,
       unitGroup: item.unitGroup ?? null,
       baseUnit: item.stockUnit,
-      options: conversionOptions(item, await this.list()),
+      options: conversionOptions(item, units),
       conversions: item.unitConversions ?? [],
     };
   }
@@ -171,7 +219,15 @@ export class UnitsService {
         if (!unit)
           throw new BadRequestException('Select an active reviewed unit');
         const factor = itemConversionFactor(entry);
-        factors.set(entry.unitId, factor);
+        if (unit.id === item.unitId && factor !== '1')
+          throw new BadRequestException(
+            'The base unit must always convert to itself at 1:1',
+          );
+        assertConversion(item.stockUnit, unit, factor);
+        factors.set(
+          entry.unitId,
+          standardFactor(unit, item.stockUnit) ?? factor,
+        );
         if (entry.stockQuantity != null && entry.unitQuantity != null) {
           assertUnitQuantity(
             item.stockUnit,
@@ -206,6 +262,15 @@ export class UnitsService {
         purchaseDefault: c.purchaseDefault === true,
         salesDefault: c.salesDefault === true,
       }));
+      const issues = groupIssues(
+        {
+          baseUnitId: item.unitId,
+          category: item.stockUnit.category,
+          conversions: item.unitConversions,
+        },
+        units,
+      );
+      if (issues.length) throw new BadRequestException(issues[0]);
       await manager.getRepository(Item).save(item);
     });
     return this.itemOptions(id);
@@ -234,6 +299,10 @@ export class UnitsService {
         if (matches.length === 1) unit = matches[0];
       }
     }
+    if (unit) {
+      const issue = unitDefinitionIssue(unit);
+      if (issue) throw new BadRequestException(issue);
+    }
     if (!unit || !unit.isActive || unit.requiresReview)
       throw new BadRequestException(
         'Select an active, reviewed stock unit from the catalog',
@@ -241,6 +310,8 @@ export class UnitsService {
     return unit;
   }
   async create(dto: CreateUnitDto) {
+    const definition = unitDefinitionIssue(dto);
+    if (definition) throw new BadRequestException(definition);
     if (!dto.name.trim() || !dto.symbol.trim())
       throw new BadRequestException('Unit name and symbol are required');
     try {
@@ -277,6 +348,16 @@ export class UnitsService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!unit) throw new NotFoundException('Unit not found');
+      if (
+        STANDARD_UNITS[unit.code] &&
+        dto.code !== undefined &&
+        dto.code !== unit.code
+      )
+        throw new BadRequestException(
+          'Standard unit codes cannot be renamed. Create a distinct custom unit.',
+        );
+      const definition = unitDefinitionIssue({ ...unit, ...dto });
+      if (definition) throw new BadRequestException(definition);
       const [{ used }] = await manager.query(
         `SELECT EXISTS(SELECT 1 FROM items WHERE unit_id = $1 OR unit_conversions @> jsonb_build_array(jsonb_build_object('unitId',$1::text))) OR EXISTS(SELECT 1 FROM unit_groups WHERE base_unit_id=$1 OR conversions @> jsonb_build_array(jsonb_build_object('unitId',$1::text))) AS used`,
         [id],
