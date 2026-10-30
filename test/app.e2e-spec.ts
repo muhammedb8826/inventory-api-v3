@@ -242,4 +242,446 @@ describe('Inventory API smoke (e2e)', () => {
       expect(dataSource.isInitialized).toBe(true);
     },
   );
+  itDb(
+    'converts purchases, sales, BOMs and transfers; returns retain the original factor',
+    async () => {
+      const server = app.getHttpServer();
+      const login = await request(server)
+        .post(`${API}/auth/login`)
+        .send({ email: adminEmail, password: adminPassword })
+        .expect(201);
+      const auth = { Authorization: `Bearer ${login.body.accessToken}` };
+      const units = (
+        await request(server).get(`${API}/units`).set(auth).expect(200)
+      ).body as { id: string; code: string }[];
+      const id = (code: string) => units.find((u) => u.code === code)!.id;
+      const loc = (
+        await request(server)
+          .post(`${API}/locations`)
+          .set(auth)
+          .send({ name: `Conversion ${Date.now()}`, type: 'WAREHOUSE' })
+          .expect(201)
+      ).body;
+      const dest = (
+        await request(server)
+          .post(`${API}/locations`)
+          .set(auth)
+          .send({
+            name: `Conversion destination ${Date.now()}`,
+            type: 'WAREHOUSE',
+          })
+          .expect(201)
+      ).body;
+      const banks = (
+        await request(server).get(`${API}/banks/accounts`).set(auth).expect(200)
+      ).body;
+      const bank = (Array.isArray(banks) ? banks : banks.data).find(
+        (b: { accountType: string }) => b.accountType === 'CASH',
+      );
+      const supplier = (
+        await request(server)
+          .post(`${API}/suppliers`)
+          .set(auth)
+          .send({ name: `Conversion Supplier ${Date.now()}` })
+          .expect(201)
+      ).body;
+      const stock = (
+        await request(server)
+          .post(`${API}/inventory`)
+          .set(auth)
+          .send({
+            description: 'Conversion parts',
+            unitId: id('PCS'),
+            locationId: loc.id,
+            quantity: 0,
+            purchasePrice: 0,
+          })
+          .expect(201)
+      ).body;
+      const itemId = stock.itemId;
+      const settings = (factor: number) =>
+        request(server)
+          .patch(`${API}/units/items/${itemId}`)
+          .set(auth)
+          .send({
+            conversions: [{ unitId: id('BOX'), factor, purchaseDefault: true }],
+          });
+      await settings(12).expect(200);
+      await request(server)
+        .patch(`${API}/units/items/${itemId}`)
+        .set(auth)
+        .send({ conversions: [{ unitId: id('M'), factor: 2 }] })
+        .expect(400);
+      const purchase = (
+        await request(server)
+          .post(`${API}/purchases`)
+          .set(auth)
+          .send({
+            supplierId: supplier.id,
+            locationId: loc.id,
+            paymentMethod: 'CASH',
+            bankAccountId: bank.id,
+            lines: [{ itemId, unitId: id('BOX'), quantity: 2, unitPrice: 120 }],
+          })
+          .expect(201)
+      ).body;
+      expect(Number(purchase.lines[0].quantity)).toBe(24);
+      expect(Number(purchase.lines[0].unitPrice)).toBe(10);
+      expect(Number(purchase.total)).toBe(240);
+      expect(purchase.lines[0].unitSnapshot.quantity).toBe('2');
+      const sale = (
+        await request(server)
+          .post(`${API}/sales`)
+          .set(auth)
+          .send({
+            locationId: loc.id,
+            paymentMethod: 'CASH',
+            bankAccountId: bank.id,
+            lines: [{ itemId, unitId: id('BOX'), quantity: 1, unitPrice: 180 }],
+          })
+          .expect(201)
+      ).body;
+      expect(Number(sale.total)).toBe(180);
+      expect(Number(sale.lines[0].quantity)).toBe(12);
+      await settings(24).expect(200);
+      const updated = (
+        await request(server)
+          .patch(`${API}/sales/${sale.id}`)
+          .set(auth)
+          .send({ paymentMethod: 'CASH' })
+          .expect(200)
+      ).body;
+      expect(updated.lines[0].unitSnapshot.factor).toBe('12');
+      expect(Number(updated.total)).toBe(180);
+      await request(server)
+        .post(`${API}/sales/${sale.id}/returns`)
+        .set(auth)
+        .send({
+          lines: [
+            { saleLineId: updated.lines[0].id, unitId: id('BOX'), quantity: 1 },
+          ],
+        })
+        .expect(201);
+      const after = (
+        await request(server)
+          .get(`${API}/inventory/${stock.id}`)
+          .set(auth)
+          .expect(200)
+      ).body;
+      expect(Number(after.quantity)).toBe(24);
+      const transfer = (
+        await request(server)
+          .post(`${API}/stock-transfers`)
+          .set(auth)
+          .send({
+            fromLocationId: loc.id,
+            toLocationId: dest.id,
+            lines: [{ itemId, unitId: id('BOX'), quantity: 1 }],
+          })
+          .expect(201)
+      ).body;
+      expect(Number(transfer.lines[0].quantity)).toBe(24);
+      const fg = (
+        await request(server)
+          .post(`${API}/inventory`)
+          .set(auth)
+          .send({
+            description: 'Conversion assembly',
+            unitId: id('PCS'),
+            itemType: 'FINISHED',
+            locationId: loc.id,
+            quantity: 0,
+            purchasePrice: 0,
+          })
+          .expect(201)
+      ).body;
+      const bom = (
+        await request(server)
+          .post(`${API}/boms`)
+          .set(auth)
+          .send({
+            finishedItemId: fg.itemId,
+            name: 'Conversion BOM',
+            lines: [
+              { componentItemId: itemId, unitId: id('BOX'), quantity: 1 },
+            ],
+          })
+          .expect(201)
+      ).body;
+      expect(Number(bom.lines[0].quantity)).toBe(24);
+      expect(bom.lines[0].unitSnapshot.factor).toBe('24');
+      const mass = (
+        await request(server)
+          .post(`${API}/inventory`)
+          .set(auth)
+          .send({
+            description: 'Conversion mass',
+            unitId: id('KG'),
+            locationId: loc.id,
+            quantity: 2,
+            purchasePrice: 10,
+          })
+          .expect(201)
+      ).body;
+      const massSale = (
+        await request(server)
+          .post(`${API}/sales`)
+          .set(auth)
+          .send({
+            locationId: loc.id,
+            paymentMethod: 'CASH',
+            bankAccountId: bank.id,
+            lines: [
+              {
+                itemId: mass.itemId,
+                unitId: id('G'),
+                quantity: 500,
+                unitPrice: 0.02,
+              },
+            ],
+          })
+          .expect(201)
+      ).body;
+      expect(Number(massSale.lines[0].quantity)).toBe(0.5);
+      expect(Number(massSale.total)).toBe(10);
+      await request(server)
+        .patch(`${API}/units/items/${mass.itemId}`)
+        .set(auth)
+        .send({ conversions: [{ unitId: id('G'), factor: 2 }] })
+        .expect(400);
+      const areaStock = (
+        await request(server)
+          .post(`${API}/inventory`)
+          .set(auth)
+          .send({
+            description: 'Conversion fabric',
+            unitId: id('M2'),
+            locationId: loc.id,
+            quantity: 20,
+            purchasePrice: 10,
+          })
+          .expect(201)
+      ).body;
+      const areaLine = {
+        itemId: areaStock.itemId,
+        unitId: id('M2'),
+        quantity: 6,
+        unitPrice: 15,
+        dimensions: { widthMetres: 1.5, lengthMetres: 2, count: 2 },
+      };
+      const areaSale = (
+        await request(server)
+          .post(`${API}/sales`)
+          .set(auth)
+          .send({
+            locationId: loc.id,
+            paymentMethod: 'CASH',
+            bankAccountId: bank.id,
+            lines: [areaLine],
+          })
+          .expect(201)
+      ).body;
+      expect(Number(areaSale.lines[0].quantity)).toBe(6);
+      expect(areaSale.lines[0].unitSnapshot.dimensions).toEqual(
+        areaLine.dimensions,
+      );
+      await request(server)
+        .post(`${API}/sales`)
+        .set(auth)
+        .send({
+          locationId: loc.id,
+          paymentMethod: 'CASH',
+          bankAccountId: bank.id,
+          lines: [{ ...areaLine, quantity: 5 }],
+        })
+        .expect(400);
+    },
+    60000,
+  );
+  itDb(
+    'corrects only unused base units and trades fixed-size pieces by area without rewriting stock history',
+    async () => {
+      const server = app.getHttpServer();
+      const login = await request(server)
+        .post(`${API}/auth/login`)
+        .send({ email: adminEmail, password: adminPassword })
+        .expect(201);
+      const auth = { Authorization: `Bearer ${login.body.accessToken}` };
+      const units = (
+        await request(server).get(`${API}/units`).set(auth).expect(200)
+      ).body as { id: string; code: string }[];
+      const unitId = (code: string) => units.find((u) => u.code === code)!.id;
+      const loc = (
+        await request(server)
+          .post(`${API}/locations`)
+          .set(auth)
+          .send({ name: `Area pieces ${Date.now()}`, type: 'WAREHOUSE' })
+          .expect(201)
+      ).body;
+      const create = async (quantity: number) =>
+        (
+          await request(server)
+            .post(`${API}/inventory`)
+            .set(auth)
+            .send({
+              description: 'Fixed-size fabric piece',
+              unitId: unitId('PCS'),
+              locationId: loc.id,
+              quantity,
+              purchasePrice: 90,
+            })
+            .expect(201)
+        ).body;
+      const empty = await create(0);
+      expect(
+        (
+          await request(server)
+            .get(`${API}/units/items/${empty.itemId}`)
+            .set(auth)
+            .expect(200)
+        ).body.canChangeBaseUnit,
+      ).toBe(true);
+      const corrected = (
+        await request(server)
+          .patch(`${API}/inventory/${empty.id}`)
+          .set(auth)
+          .send({ unitId: unitId('M2'), purchasePrice: 30 })
+          .expect(200)
+      ).body;
+      expect(corrected.item.unitId).toBe(unitId('M2'));
+      expect(Number(corrected.quantity)).toBe(0);
+      expect(Number(corrected.purchasePrice)).toBe(30);
+      await request(server)
+        .patch(`${API}/units/items/${empty.itemId}`)
+        .set(auth)
+        .send({
+          conversions: [
+            { unitId: unitId('PCS'), stockQuantity: 3, unitQuantity: 1 },
+          ],
+        })
+        .expect(200);
+      await request(server)
+        .patch(`${API}/inventory/${empty.id}`)
+        .set(auth)
+        .send({ unitId: unitId('PCS') })
+        .expect(400);
+      await request(server)
+        .patch(`${API}/units/items/${empty.itemId}`)
+        .set(auth)
+        .send({ conversions: [] })
+        .expect(200);
+      await request(server)
+        .patch(`${API}/inventory/${empty.id}`)
+        .set(auth)
+        .send({ unitId: unitId('PCS') })
+        .expect(200);
+      const stocked = await create(20);
+      const configure = (unitQuantity: number) =>
+        request(server)
+          .patch(`${API}/units/items/${stocked.itemId}`)
+          .set(auth)
+          .send({
+            conversions: [
+              {
+                unitId: unitId('M2'),
+                stockQuantity: 1,
+                unitQuantity,
+                salesDefault: true,
+              },
+            ],
+          });
+      const configured = (await configure(3).expect(200)).body;
+      expect(configured.canChangeBaseUnit).toBe(false);
+      expect(configured.conversions[0]).toMatchObject({
+        stockQuantity: '1',
+        unitQuantity: '3',
+      });
+      expect(
+        (
+          await request(server)
+            .get(`${API}/inventory/${stocked.id}`)
+            .set(auth)
+            .expect(200)
+        ).body.quantity,
+      ).toBe('20.000');
+      await request(server)
+        .patch(`${API}/inventory/${stocked.id}`)
+        .set(auth)
+        .send({ unitId: unitId('M2') })
+        .expect(400);
+      const banks = (
+        await request(server).get(`${API}/banks/accounts`).set(auth).expect(200)
+      ).body;
+      const bank = (Array.isArray(banks) ? banks : banks.data).find(
+        (b: { accountType: string }) => b.accountType === 'CASH',
+      );
+      const saleBody = {
+        locationId: loc.id,
+        paymentMethod: 'CASH',
+        bankAccountId: bank.id,
+        lines: [
+          {
+            itemId: stocked.itemId,
+            unitId: unitId('M2'),
+            quantity: 6,
+            unitPrice: 30,
+          },
+        ],
+      };
+      const sale = (
+        await request(server)
+          .post(`${API}/sales`)
+          .set(auth)
+          .send(saleBody)
+          .expect(201)
+      ).body;
+      expect(Number(sale.lines[0].quantity)).toBe(2);
+      expect(Number(sale.lines[0].unitPrice)).toBe(90);
+      expect(Number(sale.total)).toBe(180);
+      await request(server)
+        .post(`${API}/sales`)
+        .set(auth)
+        .send({ ...saleBody, lines: [{ ...saleBody.lines[0], quantity: 1 }] })
+        .expect(400);
+      await configure(4).expect(200);
+      await request(server)
+        .post(`${API}/sales/${sale.id}/returns`)
+        .set(auth)
+        .send({
+          lines: [
+            { saleLineId: sale.lines[0].id, unitId: unitId('M2'), quantity: 6 },
+          ],
+        })
+        .expect(201);
+      expect(
+        Number(
+          (
+            await request(server)
+              .get(`${API}/inventory/${stocked.id}`)
+              .set(auth)
+              .expect(200)
+          ).body.quantity,
+        ),
+      ).toBe(20);
+      await request(server)
+        .patch(`${API}/units/items/${stocked.itemId}`)
+        .set(auth)
+        .send({ conversions: [] })
+        .expect(200);
+      await request(server)
+        .patch(`${API}/inventory/${stocked.id}`)
+        .set(auth)
+        .send({ unitId: unitId('M2') })
+        .expect(400);
+      await expect(
+        dataSource.query('UPDATE items SET unit_id=$1 WHERE id=$2', [
+          unitId('M2'),
+          stocked.itemId,
+        ]),
+      ).rejects.toMatchObject({
+        driverError: { constraint: 'item_stock_unit_locked' },
+      });
+    },
+    60000,
+  );
 });

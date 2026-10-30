@@ -1,3 +1,4 @@
+import { normalizeLine } from '../units/conversion';
 import { assertUnitQuantity } from '../units/unit-quantity';
 import {
   BadRequestException,
@@ -100,6 +101,7 @@ export class BomsService {
 
   async create(dto: CreateBomDto) {
     await this.assertFinishedItem(dto.finishedItemId);
+    dto.lines = await this.normalizeBomLines(dto.lines);
     await this.assertLines(dto.finishedItemId, dto.lines);
     this.assertEffectivity(dto.effectiveFrom, dto.effectiveTo);
 
@@ -158,6 +160,7 @@ export class BomsService {
     await this.bomRepo.save(header);
 
     if (dto.lines) {
+      dto.lines = await this.normalizeBomLines(dto.lines);
       await this.assertLines(bom.finishedItemId, dto.lines);
       const lineRepo = this.bomRepo.manager.getRepository(BomLine);
       await lineRepo.delete({ bomId: id });
@@ -168,6 +171,7 @@ export class BomsService {
             bomId: id,
             componentItemId: line.componentItemId,
             quantity: line.quantity,
+            unitSnapshot: line.unitSnapshot,
             scrapPercent: line.scrapPercent,
             isPhantom: line.isPhantom,
           }),
@@ -185,10 +189,11 @@ export class BomsService {
   async revise(id: string, dto: ReviseBomDto) {
     const source = await this.findOne(id);
     const lines: BomLineDto[] =
-      dto.lines ??
+      (dto.lines ? await this.normalizeBomLines(dto.lines) : undefined) ??
       (source.lines ?? []).map((l) => ({
         componentItemId: l.componentItemId,
         quantity: parseFloat(l.quantity),
+        unitSnapshot: l.unitSnapshot,
         scrapPercent: parseFloat(l.scrapPercent) || 0,
         isPhantom: l.isPhantom === true,
       }));
@@ -499,6 +504,13 @@ export class BomsService {
   }
 
   /** Resolve line phantoms: explicit DTO flag, else inherit item.isPhantom. */
+  private async normalizeBomLines(lines: BomLineDto[]) {
+    return Promise.all(
+      lines.map((line) =>
+        normalizeLine(this.bomRepo.manager, line.componentItemId, line),
+      ),
+    );
+  }
   private async buildLineEntities(lines: BomLineDto[]): Promise<BomLine[]> {
     const out: BomLine[] = [];
     for (const line of lines) {
@@ -513,6 +525,12 @@ export class BomsService {
         Object.assign(new BomLine(), {
           componentItemId: line.componentItemId,
           quantity: line.quantity.toFixed(3),
+          unitSnapshot:
+            (
+              line as BomLineDto & {
+                unitSnapshot?: import('../units/conversion').UnitSnapshot;
+              }
+            ).unitSnapshot ?? null,
           scrapPercent: (line.scrapPercent ?? 0).toFixed(2),
           isPhantom: isPhantom === true,
         }),

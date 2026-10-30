@@ -17,7 +17,7 @@ export class SaleReturnLine extends UuidBaseEntity {
   @Column({ type: 'decimal', precision: 14, scale: 3 })
   quantity: string;
 
-  @Column({ name: 'unit_price', type: 'decimal', precision: 14, scale: 2 })
+  @Column({ name: 'unit_price', type: 'decimal', precision: 22, scale: 10 })
   unitPrice: string;
 
   @ManyToOne(() => SaleReturn, (ret) => ret.lines, { onDelete: 'CASCADE' })

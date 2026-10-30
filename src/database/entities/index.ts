@@ -1,3 +1,4 @@
+import { UnitGroup } from './unit-group.entity';
 export { UnitOfMeasure } from './unit-of-measure.entity';
 import { UnitOfMeasure } from './unit-of-measure.entity';
 export { Permission } from './permission.entity';
@@ -81,6 +82,7 @@ import { StockLot } from './stock-lot.entity';
 import { UserLocation } from './user-location.entity';
 
 export const entities = [
+  UnitGroup,
   UnitOfMeasure,
   Permission,
   Role,

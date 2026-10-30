@@ -1,4 +1,9 @@
-import { moneyAdd, moneyMultiply } from '../common/utils/money.util';
+import {
+  normalizeLine,
+  commercialTotal,
+  UnitSnapshot,
+} from '../units/conversion';
+import { moneyAdd } from '../common/utils/money.util';
 import {
   BadRequestException,
   Injectable,
@@ -133,12 +138,13 @@ export class PurchasesService {
   private resolveLines(
     purchase: Purchase,
     dto: UpdatePurchaseDto,
-  ): PurchaseLineDto[] {
+  ): (PurchaseLineDto & { unitSnapshot?: UnitSnapshot | null })[] {
     if (dto.lines) return dto.lines;
     return purchase.lines.map((l) => ({
       itemId: l.itemId,
       quantity: parseFloat(l.quantity),
       unitPrice: parseFloat(l.unitPrice),
+      unitSnapshot: l.unitSnapshot,
     }));
   }
 
@@ -212,7 +218,11 @@ export class PurchasesService {
         dto.creditDueDate !== undefined
           ? dto.creditDueDate
           : (purchase.credit?.dueDate ?? undefined);
-      const lines = this.resolveLines(purchase, dto);
+      const lines = dto.lines
+        ? await Promise.all(
+            dto.lines.map((line) => normalizeLine(manager, line.itemId, line)),
+          )
+        : this.resolveLines(purchase, dto);
 
       if (this.paysViaBank(paymentMethod) && !bankAccountId) {
         throw new BadRequestException(
@@ -228,8 +238,7 @@ export class PurchasesService {
       }
 
       const subtotal = lines.reduce(
-        (sum, l) =>
-          Number(moneyAdd(sum, moneyMultiply(l.quantity, l.unitPrice))),
+        (sum, l) => Number(moneyAdd(sum, commercialTotal(l))),
         0,
       );
 
@@ -279,11 +288,12 @@ export class PurchasesService {
       purchase.total = subtotal.toFixed(2);
       purchase.notes = notes;
       purchase.lines = lines.map((l) => {
-        const lineTotal = Number(moneyMultiply(l.quantity, l.unitPrice));
+        const lineTotal = commercialTotal(l);
         return Object.assign(new PurchaseLine(), {
           itemId: l.itemId,
           quantity: l.quantity.toFixed(3),
-          unitPrice: l.unitPrice.toFixed(2),
+          unitPrice: l.unitPrice.toFixed(10),
+          unitSnapshot: l.unitSnapshot ?? null,
           lineTotal: lineTotal.toFixed(2),
         });
       });
@@ -423,12 +433,14 @@ export class PurchasesService {
       );
     }
 
-    const subtotal = dto.lines.reduce(
-      (sum, l) => Number(moneyAdd(sum, moneyMultiply(l.quantity, l.unitPrice))),
-      0,
-    );
-
     const purchaseId = await this.dataSource.transaction(async (manager) => {
+      const normalizedLines = await Promise.all(
+        dto.lines.map((line) => normalizeLine(manager, line.itemId, line)),
+      );
+      const subtotal = normalizedLines.reduce(
+        (sum, line) => Number(moneyAdd(sum, commercialTotal(line))),
+        0,
+      );
       if (needsBank && dto.bankAccountId) {
         await this.banksService.assertPaymentAccount(
           dto.paymentMethod,
@@ -440,12 +452,13 @@ export class PurchasesService {
       const purchaseRepo = manager.getRepository(Purchase);
       const creditRepo = manager.getRepository(SupplierCredit);
 
-      const lines = dto.lines.map((l) => {
-        const lineTotal = Number(moneyMultiply(l.quantity, l.unitPrice));
+      const lines = normalizedLines.map((l) => {
+        const lineTotal = commercialTotal(l);
         return Object.assign(new PurchaseLine(), {
           itemId: l.itemId,
           quantity: l.quantity.toFixed(3),
-          unitPrice: l.unitPrice.toFixed(2),
+          unitPrice: l.unitPrice.toFixed(10),
+          unitSnapshot: l.unitSnapshot ?? null,
           lineTotal: lineTotal.toFixed(2),
         });
       });
@@ -465,7 +478,7 @@ export class PurchasesService {
         }),
       );
 
-      for (const line of dto.lines) {
+      for (const line of normalizedLines) {
         await this.stockService.adjust(
           {
             locationId: dto.locationId,
@@ -521,7 +534,7 @@ export class PurchasesService {
 
     await this.notifications.onPurchaseRecorded({
       purchaseId,
-      total: subtotal.toFixed(2),
+      total: (await this.findOne(purchaseId)).total,
       actorUserId: userId,
       creditDueDate: dto.creditDueDate ?? null,
     });

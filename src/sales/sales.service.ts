@@ -1,3 +1,10 @@
+import Decimal from 'decimal.js';
+import { assertUnitQuantity } from '../units/unit-quantity';
+import {
+  normalizeLine,
+  commercialTotal,
+  UnitSnapshot,
+} from '../units/conversion';
 import {
   moneyAdd,
   moneyMultiply,
@@ -58,7 +65,12 @@ type SaleCommissionLineInput = Pick<
 
 type SaleLineDraft = Pick<
   SaleLine,
-  'itemId' | 'quantity' | 'unitPrice' | 'purchaseCost' | 'lineTotal'
+  | 'itemId'
+  | 'quantity'
+  | 'unitPrice'
+  | 'purchaseCost'
+  | 'lineTotal'
+  | 'unitSnapshot'
 >;
 
 @Injectable()
@@ -284,12 +296,16 @@ export class SalesService {
     return targetId;
   }
 
-  private resolveLines(sale: Sale, dto: UpdateSaleDto): SaleLineDto[] {
+  private resolveLines(
+    sale: Sale,
+    dto: UpdateSaleDto,
+  ): (SaleLineDto & { unitSnapshot?: UnitSnapshot | null })[] {
     if (dto.lines) return dto.lines;
     return sale.lines.map((l) => ({
       itemId: l.itemId,
       quantity: parseFloat(l.quantity),
       unitPrice: parseFloat(l.unitPrice),
+      unitSnapshot: l.unitSnapshot,
     }));
   }
 
@@ -436,7 +452,11 @@ export class SalesService {
         dto.creditDueDate !== undefined
           ? dto.creditDueDate
           : (sale.credit?.dueDate ?? undefined);
-      const lines = this.resolveLines(sale, dto);
+      const lines = dto.lines
+        ? await Promise.all(
+            dto.lines.map((line) => normalizeLine(manager, line.itemId, line)),
+          )
+        : this.resolveLines(sale, dto);
 
       if (this.paysViaBank(paymentMethod) && !bankAccountId) {
         throw new BadRequestException(
@@ -455,8 +475,7 @@ export class SalesService {
       }
 
       const subtotal = lines.reduce(
-        (sum, l) =>
-          Number(moneyAdd(sum, moneyMultiply(l.quantity, l.unitPrice))),
+        (sum, l) => Number(moneyAdd(sum, commercialTotal(l))),
         0,
       );
 
@@ -513,12 +532,13 @@ export class SalesService {
           manager,
         );
         const purchaseCost = stock ? parseFloat(stock.purchasePrice) : 0;
-        const lineTotal = Number(moneyMultiply(line.quantity, line.unitPrice));
+        const lineTotal = commercialTotal(line);
         saleLines.push({
           itemId: line.itemId,
           quantity: line.quantity.toFixed(3),
-          unitPrice: line.unitPrice.toFixed(2),
-          purchaseCost: purchaseCost.toFixed(2),
+          unitPrice: line.unitPrice.toFixed(10),
+          unitSnapshot: line.unitSnapshot ?? null,
+          purchaseCost: purchaseCost.toFixed(10),
           lineTotal: lineTotal.toFixed(2),
         });
       }
@@ -726,6 +746,9 @@ export class SalesService {
     }
 
     const result = await this.dataSource.transaction(async (manager) => {
+      const normalizedLines = await Promise.all(
+        dto.lines.map((line) => normalizeLine(manager, line.itemId, line)),
+      );
       if (paysViaBank && dto.bankAccountId) {
         await this.banksService.assertPaymentAccount(
           dto.paymentMethod,
@@ -741,7 +764,7 @@ export class SalesService {
 
       const stockWarnings = await this.stockService.checkAvailability(
         dto.locationId,
-        dto.lines,
+        normalizedLines,
         allowNegative,
         manager,
       );
@@ -749,20 +772,21 @@ export class SalesService {
       const saleLines: SaleLineDraft[] = [];
       let subtotal = 0;
 
-      for (const line of dto.lines) {
+      for (const line of normalizedLines) {
         const stock = await this.stockService.getStock(
           dto.locationId,
           line.itemId,
           manager,
         );
         const purchaseCost = stock ? parseFloat(stock.purchasePrice) : 0;
-        const lineTotal = Number(moneyMultiply(line.quantity, line.unitPrice));
+        const lineTotal = commercialTotal(line);
         subtotal = Number(moneyAdd(subtotal, lineTotal));
         saleLines.push({
           itemId: line.itemId,
           quantity: line.quantity.toFixed(3),
-          unitPrice: line.unitPrice.toFixed(2),
-          purchaseCost: purchaseCost.toFixed(2),
+          unitPrice: line.unitPrice.toFixed(10),
+          unitSnapshot: line.unitSnapshot ?? null,
+          purchaseCost: purchaseCost.toFixed(10),
           lineTotal: lineTotal.toFixed(2),
         });
       }
@@ -817,7 +841,7 @@ export class SalesService {
         );
       }
 
-      for (const line of dto.lines) {
+      for (const line of normalizedLines) {
         const previousQuantity = await this.stockService.getQuantity(
           dto.locationId,
           line.itemId,
@@ -1010,7 +1034,7 @@ export class SalesService {
   async createReturn(
     saleId: string,
     dto: {
-      lines: { saleLineId: string; quantity: number }[];
+      lines: { saleLineId: string; quantity: number; unitId?: string }[];
       notes?: string;
       bankAccountId?: string;
     },
@@ -1058,6 +1082,34 @@ export class SalesService {
           request.quantity <= 0
         )
           throw new BadRequestException('Invalid return line');
+        if (request.unitId && request.unitId !== original.item.unitId) {
+          if (
+            !original.unitSnapshot ||
+            request.unitId !== original.unitSnapshot.unitId
+          )
+            throw new BadRequestException(
+              'Return in the base unit or the original selling unit',
+            );
+          assertUnitQuantity(
+            {
+              symbol: original.unitSnapshot.symbol,
+              decimalPlaces: original.unitSnapshot.decimalPlaces ?? 3,
+            },
+            request.quantity,
+            'Return quantity',
+          );
+          request = {
+            ...request,
+            quantity: new Decimal(request.quantity)
+              .mul(original.unitSnapshot.factor)
+              .toNumber(),
+          };
+        }
+        assertUnitQuantity(
+          original.item.stockUnit,
+          request.quantity,
+          'Return quantity',
+        );
         if (
           (quantities.get(original.id) ?? 0) + request.quantity >
           Number(original.quantity) + 0.000001

@@ -1,3 +1,4 @@
+import { AreaDimensionsDto } from '../../units/dto/area-dimensions.dto';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -13,6 +14,11 @@ import {
 } from 'class-validator';
 
 export class StockTransferLineDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AreaDimensionsDto)
+  dimensions?: AreaDimensionsDto;
+  @IsOptional() @IsUUID() unitId?: string;
   @IsUUID()
   itemId: string;
 

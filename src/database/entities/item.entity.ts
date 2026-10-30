@@ -1,3 +1,5 @@
+import { UnitGroup } from './unit-group.entity';
+import type { ItemConversion } from '../../units/conversion';
 import { UnitOfMeasure } from './unit-of-measure.entity';
 import {
   Column,
@@ -40,6 +42,19 @@ export class Item extends UuidBaseEntity {
   @ManyToOne(() => UnitOfMeasure, { eager: true, nullable: false })
   @JoinColumn({ name: 'unit_id' })
   stockUnit: UnitOfMeasure;
+
+  @Column({
+    name: 'unit_conversions',
+    type: 'jsonb',
+    default: () => "'[]'::jsonb",
+  })
+  unitConversions: ItemConversion[];
+
+  @Column({ name: 'unit_group_id', type: 'uuid', nullable: true })
+  unitGroupId: string | null;
+  @ManyToOne(() => UnitGroup, { eager: true, nullable: true })
+  @JoinColumn({ name: 'unit_group_id' })
+  unitGroup: UnitGroup | null;
 
   /** Compatibility display symbol; stockUnit is the authoritative definition. */
   @Column({ type: 'varchar', length: 40, nullable: true })

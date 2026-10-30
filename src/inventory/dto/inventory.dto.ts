@@ -45,6 +45,10 @@ export class CreateInventoryDto {
   unitId?: string;
 
   @IsOptional()
+  @IsUUID()
+  unitGroupId?: string | null;
+
+  @IsOptional()
   @IsEnum(ItemType)
   itemType?: ItemType;
 
@@ -83,6 +87,10 @@ export class UpdateInventoryDto {
   @IsOptional()
   @IsUUID()
   unitId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  unitGroupId?: string | null;
 
   @IsOptional()
   @IsEnum(ItemType)

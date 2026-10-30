@@ -1,3 +1,4 @@
+import type { UnitSnapshot } from '../../units/conversion';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { Item } from './item.entity';
 import { StockTransfer } from './stock-transfer.entity';
@@ -14,12 +15,15 @@ export class StockTransferLine extends UuidBaseEntity {
   @Column({ type: 'decimal', precision: 14, scale: 3 })
   quantity: string;
 
+  @Column({ name: 'unit_snapshot', type: 'jsonb', nullable: true })
+  unitSnapshot: UnitSnapshot | null;
+
   /** Snapshot of source unit cost when shipped (IN_TRANSIT). */
   @Column({
     name: 'unit_cost',
     type: 'decimal',
-    precision: 14,
-    scale: 2,
+    precision: 22,
+    scale: 10,
     nullable: true,
   })
   unitCost: string | null;

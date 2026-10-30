@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js';
 import { assertUnitQuantity } from '../units/unit-quantity';
 import { randomUUID } from 'crypto';
 import { applyLocationScope } from '../common/location-scope';
@@ -248,12 +249,15 @@ export class StockService {
       const weighted =
         currentQty <= 0
           ? adj.purchasePrice
-          : (currentQty * currentPrice + incoming * adj.purchasePrice) /
-            (currentQty + incoming);
-      row.purchasePrice = weighted.toFixed(2);
-      unitCostForLedger = adj.purchasePrice.toFixed(2);
+          : new Decimal(currentQty)
+              .mul(currentPrice)
+              .plus(new Decimal(incoming).mul(adj.purchasePrice))
+              .div(new Decimal(currentQty).plus(incoming))
+              .toNumber();
+      row.purchasePrice = weighted.toFixed(10);
+      unitCostForLedger = adj.purchasePrice.toFixed(10);
     } else if (adj.quantityDelta !== 0) {
-      unitCostForLedger = parseFloat(row.purchasePrice).toFixed(2);
+      unitCostForLedger = parseFloat(row.purchasePrice).toFixed(10);
     }
 
     row.quantity = newQty.toFixed(3);

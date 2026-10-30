@@ -263,7 +263,13 @@ export class InventoryService {
     if (!item && barcode) {
       item = await this.itemRepo.findOne({ where: { barcode } });
     }
-    const unit = await this.units.resolve(dto.unitId, dto.unit);
+    const group = dto.unitGroupId
+      ? await this.units.group(dto.unitGroupId)
+      : null;
+    const unit = await this.units.resolve(
+      group?.baseUnitId ?? dto.unitId,
+      dto.unit,
+    );
     assertUnitQuantity(unit, dto.quantity);
     if (dto.reorderPoint != null)
       assertUnitQuantity(unit, dto.reorderPoint, 'Reorder point');
@@ -279,6 +285,7 @@ export class InventoryService {
             barcode,
             description: dto.description,
             unitId: unit.id,
+            unitGroupId: group?.id ?? null,
             unit: unit.symbol,
             itemType: dto.itemType,
             isPhantom: dto.isPhantom === true,
@@ -318,6 +325,10 @@ export class InventoryService {
       }
     }
 
+    if (dto.unitGroupId && item.unitGroupId !== dto.unitGroupId)
+      throw new BadRequestException(
+        'Existing item uses a different unit group',
+      );
     if (item.unitId !== unit.id)
       throw new BadRequestException(
         'Selected unit does not match the existing item',
@@ -345,108 +356,166 @@ export class InventoryService {
   }
 
   async update(id: string, dto: UpdateInventoryDto, requestBaseUrl?: string) {
-    const stock = await this.findOne(id, requestBaseUrl);
+    const savedId = await this.dataSource.transaction(async (manager) => {
+      const itemRepo = manager.getRepository(Item),
+        stockRepo = manager.getRepository(StockLevel);
+      const stock = await stockRepo.findOne({
+        where: { id },
+        relations: { item: true },
+      });
+      if (!stock) throw new NotFoundException('Inventory record not found');
+      const previousUnitId = stock.item.unitId;
 
-    const itemChanged =
-      dto.description !== undefined ||
-      dto.sku !== undefined ||
-      dto.barcode !== undefined ||
-      dto.unit !== undefined ||
-      dto.unitId !== undefined ||
-      dto.itemType !== undefined ||
-      dto.isPhantom !== undefined;
+      const itemChanged =
+        dto.description !== undefined ||
+        dto.sku !== undefined ||
+        dto.barcode !== undefined ||
+        dto.unit !== undefined ||
+        dto.unitGroupId !== undefined ||
+        dto.unitId !== undefined ||
+        dto.itemType !== undefined ||
+        dto.isPhantom !== undefined;
 
-    if (itemChanged) {
-      if (dto.description !== undefined) {
-        const description = dto.description.trim();
-        if (!description) {
-          throw new BadRequestException('description cannot be empty');
+      if (itemChanged) {
+        if (dto.description !== undefined) {
+          const description = dto.description.trim();
+          if (!description) {
+            throw new BadRequestException('description cannot be empty');
+          }
+          stock.item.description = description;
         }
-        stock.item.description = description;
-      }
-      if (dto.sku !== undefined) {
-        const sku =
-          dto.sku === null || dto.sku.trim() === '' ? null : dto.sku.trim();
-        if (sku) {
-          const existing = await this.itemRepo.findOne({
-            where: { sku, id: Not(stock.itemId) },
-          });
-          if (existing) {
-            throw new ConflictException('SKU already in use by another item');
+        if (dto.sku !== undefined) {
+          const sku =
+            dto.sku === null || dto.sku.trim() === '' ? null : dto.sku.trim();
+          if (sku) {
+            const existing = await itemRepo.findOne({
+              where: { sku, id: Not(stock.itemId) },
+            });
+            if (existing) {
+              throw new ConflictException('SKU already in use by another item');
+            }
+          }
+          stock.item.sku = sku;
+        }
+        if (dto.barcode !== undefined) {
+          const barcode =
+            dto.barcode === null || dto.barcode.trim() === ''
+              ? null
+              : dto.barcode.trim();
+          if (barcode) {
+            const existing = await itemRepo.findOne({
+              where: { barcode, id: Not(stock.itemId) },
+            });
+            if (existing) {
+              throw new ConflictException(
+                'Barcode already in use by another item',
+              );
+            }
+          }
+          stock.item.barcode = barcode;
+        }
+        if (
+          dto.unitGroupId !== undefined &&
+          dto.unitGroupId !== stock.item.unitGroupId
+        ) {
+          const group = dto.unitGroupId
+            ? await this.units.group(dto.unitGroupId)
+            : null;
+          stock.item.unitGroupId = group?.id ?? null;
+          if (group) dto.unitId = group.baseUnitId;
+        }
+        if (dto.unit !== undefined || dto.unitId !== undefined) {
+          if (dto.unitId === stock.item.unitId && dto.unit === undefined) {
+            /* Existing legacy units may be retained while editing metadata. */
+          } else {
+            const unit = await this.units.resolve(dto.unitId, dto.unit);
+            if (
+              stock.item.unitId !== unit.id &&
+              stock.item.unitConversions?.length
+            )
+              throw new BadRequestException(
+                'Remove alternative unit settings before changing an unused base unit',
+              );
+            stock.item.unitId = unit.id;
+            stock.item.stockUnit = unit;
+            stock.item.unit = unit.symbol;
           }
         }
-        stock.item.sku = sku;
-      }
-      if (dto.barcode !== undefined) {
-        const barcode =
-          dto.barcode === null || dto.barcode.trim() === ''
-            ? null
-            : dto.barcode.trim();
-        if (barcode) {
-          const existing = await this.itemRepo.findOne({
-            where: { barcode, id: Not(stock.itemId) },
+        if (dto.itemType !== undefined) {
+          stock.item.itemType = dto.itemType;
+        }
+        if (dto.isPhantom !== undefined) {
+          stock.item.isPhantom = dto.isPhantom;
+        }
+        if (dto.reorderPoint != null)
+          assertUnitQuantity(
+            stock.item.stockUnit,
+            dto.reorderPoint,
+            'Reorder point',
+          );
+        if (
+          previousUnitId !== stock.item.unitId &&
+          dto.reorderPoint !== undefined
+        ) {
+          // Clear the old threshold inside this transaction before changing its unit.
+          await stockRepo.update(id, { reorderPoint: null });
+        }
+        try {
+          await itemRepo.update(stock.itemId, {
+            ...(dto.unitGroupId !== undefined
+              ? { unitGroupId: stock.item.unitGroupId }
+              : {}),
+            ...(dto.description !== undefined
+              ? { description: stock.item.description }
+              : {}),
+            ...(dto.sku !== undefined ? { sku: stock.item.sku } : {}),
+            ...(dto.barcode !== undefined
+              ? { barcode: stock.item.barcode }
+              : {}),
+            ...(dto.unitId !== undefined || dto.unit !== undefined
+              ? { unitId: stock.item.unitId, unit: stock.item.unit }
+              : {}),
+            ...(dto.itemType !== undefined
+              ? { itemType: stock.item.itemType }
+              : {}),
+            ...(dto.isPhantom !== undefined
+              ? { isPhantom: stock.item.isPhantom }
+              : {}),
           });
-          if (existing) {
+        } catch (err) {
+          if (this.isUniqueViolation(err)) {
+            const msg = String(
+              (err as QueryFailedError).message ?? '',
+            ).toLowerCase();
             throw new ConflictException(
-              'Barcode already in use by another item',
+              msg.includes('barcode')
+                ? 'Barcode already in use by another item'
+                : 'SKU already in use by another item',
             );
           }
-        }
-        stock.item.barcode = barcode;
-      }
-      if (dto.unit !== undefined || dto.unitId !== undefined) {
-        if (dto.unitId === stock.item.unitId && dto.unit === undefined) {
-          /* Existing legacy units may be retained while editing metadata. */
-        } else {
-          const unit = await this.units.resolve(dto.unitId, dto.unit);
-          stock.item.unitId = unit.id;
-          stock.item.stockUnit = unit;
-          stock.item.unit = unit.symbol;
+          throw err;
         }
       }
-      if (dto.itemType !== undefined) {
-        stock.item.itemType = dto.itemType;
-      }
-      if (dto.isPhantom !== undefined) {
-        stock.item.isPhantom = dto.isPhantom;
-      }
-      try {
-        await this.itemRepo.save(stock.item);
-      } catch (err) {
-        if (this.isUniqueViolation(err)) {
-          const msg = String(
-            (err as QueryFailedError).message ?? '',
-          ).toLowerCase();
-          throw new ConflictException(
-            msg.includes('barcode')
-              ? 'Barcode already in use by another item'
-              : 'SKU already in use by another item',
-          );
-        }
-        throw err;
-      }
-    }
 
-    if (dto.reorderPoint != null)
-      assertUnitQuantity(
-        stock.item.stockUnit,
-        dto.reorderPoint,
-        'Reorder point',
-      );
-    if (dto.purchasePrice !== undefined) {
-      stock.purchasePrice = dto.purchasePrice.toFixed(2);
-    }
-    if (dto.reorderPoint !== undefined) {
-      stock.reorderPoint =
-        dto.reorderPoint === null ? null : dto.reorderPoint.toFixed(3);
-    }
-    const saved = await this.stockRepo.save(stock);
-
-    if (dto.reorderPoint !== undefined) {
-      await this.lowStockService.evaluateAfterReorderPointChange(saved.id);
-    }
-
-    return this.findOne(saved.id, requestBaseUrl);
+      if (dto.reorderPoint != null)
+        assertUnitQuantity(
+          stock.item.stockUnit,
+          dto.reorderPoint,
+          'Reorder point',
+        );
+      const fields: Partial<StockLevel> = {};
+      if (dto.purchasePrice !== undefined)
+        fields.purchasePrice = dto.purchasePrice.toFixed(10);
+      if (dto.reorderPoint !== undefined)
+        fields.reorderPoint =
+          dto.reorderPoint === null ? null : dto.reorderPoint.toFixed(3);
+      // Update only editable fields; never save a stale quantity/reservation snapshot.
+      if (Object.keys(fields).length) await stockRepo.update(id, fields);
+      return stock.id;
+    });
+    if (dto.reorderPoint !== undefined)
+      await this.lowStockService.evaluateAfterReorderPointChange(savedId);
+    return this.findOne(savedId, requestBaseUrl);
   }
 
   async uploadItemImage(

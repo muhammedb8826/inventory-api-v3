@@ -1,3 +1,4 @@
+import { normalizeLine } from '../units/conversion';
 import {
   BadRequestException,
   Injectable,
@@ -86,6 +87,9 @@ export class StockTransfersService {
 
     const transferId = await this.dataSource.transaction(async (manager) => {
       const transferRepo = manager.getRepository(StockTransfer);
+      const lines = await Promise.all(
+        dto.lines.map((line) => normalizeLine(manager, line.itemId, line)),
+      );
 
       const transfer = await transferRepo.save(
         transferRepo.create({
@@ -94,17 +98,18 @@ export class StockTransfersService {
           notes: dto.notes ?? null,
           status: TransferStatus.PENDING,
           createdById: userId ?? null,
-          lines: dto.lines.map((l) =>
+          lines: lines.map((l) =>
             Object.assign(new StockTransferLine(), {
               itemId: l.itemId,
               quantity: l.quantity.toFixed(3),
+              unitSnapshot: l.unitSnapshot,
               unitCost: null,
             }),
           ),
         }),
       );
 
-      for (const line of dto.lines) {
+      for (const line of lines) {
         await this.stockService.reserve(
           dto.fromLocationId,
           line.itemId,
@@ -164,7 +169,7 @@ export class StockTransfersService {
             createdById: userId ?? null,
           },
         );
-        line.unitCost = unitCost.toFixed(2);
+        line.unitCost = unitCost.toFixed(10);
         stockChanges.push({
           locationId: transfer.fromLocationId,
           itemId: line.itemId,

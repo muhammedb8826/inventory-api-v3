@@ -1661,6 +1661,153 @@
         ]
       }
     },
+    "/api/v1/units/groups": {
+      "get": {
+        "operationId": "UnitsController_groups",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnitGroup"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Units"
+        ]
+      },
+      "post": {
+        "operationId": "UnitsController_createGroup",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveUnitGroupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitGroup"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Units"
+        ]
+      }
+    },
+    "/api/v1/units/groups/{id}": {
+      "patch": {
+        "operationId": "UnitsController_updateGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveUnitGroupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitGroup"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Units"
+        ]
+      }
+    },
+    "/api/v1/units/items/{id}": {
+      "get": {
+        "operationId": "UnitsController_options",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Units"
+        ]
+      },
+      "patch": {
+        "operationId": "UnitsController_configure",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateItemConversionsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Units"
+        ]
+      }
+    },
     "/api/v1/units/{id}": {
       "patch": {
         "operationId": "UnitsController_update",
@@ -7387,6 +7534,54 @@
           "id"
         ]
       },
+      "UnitGroup": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "baseUnitId": {
+            "type": "string"
+          },
+          "baseUnit": {
+            "$ref": "#/components/schemas/UnitOfMeasure"
+          },
+          "conversions": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "baseUnitId",
+          "baseUnit",
+          "conversions",
+          "isActive",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
+      },
       "Item": {
         "type": "object",
         "properties": {
@@ -7408,6 +7603,25 @@
           },
           "stockUnit": {
             "$ref": "#/components/schemas/UnitOfMeasure"
+          },
+          "unitConversions": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "unitGroupId": {
+            "type": "string",
+            "nullable": true
+          },
+          "unitGroup": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnitGroup"
+              }
+            ]
           },
           "unit": {
             "type": "string",
@@ -7464,6 +7678,9 @@
           "description",
           "unitId",
           "stockUnit",
+          "unitConversions",
+          "unitGroupId",
+          "unitGroup",
           "unit",
           "itemType",
           "isPhantom",
@@ -8055,6 +8272,96 @@
           "body"
         ]
       },
+      "ItemConversionDto": {
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "factor": {
+            "type": "number",
+            "minimum": 1e-10,
+            "maximum": 1000000000
+          },
+          "stockQuantity": {
+            "type": "number",
+            "minimum": 0.001,
+            "maximum": 1000000000
+          },
+          "unitQuantity": {
+            "type": "number",
+            "minimum": 0.001,
+            "maximum": 1000000000
+          },
+          "purchaseDefault": {
+            "type": "boolean"
+          },
+          "salesDefault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "unitId"
+        ]
+      },
+      "SaveUnitGroupDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "COUNT",
+              "LENGTH",
+              "AREA",
+              "VOLUME",
+              "MASS",
+              "TIME",
+              "OTHER"
+            ]
+          },
+          "baseUnitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "conversions": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemConversionDto"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "baseUnitId",
+          "conversions"
+        ]
+      },
+      "UpdateItemConversionsDto": {
+        "type": "object",
+        "properties": {
+          "conversions": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemConversionDto"
+            }
+          }
+        },
+        "required": [
+          "conversions"
+        ]
+      },
       "CreateUnitDto": {
         "type": "object",
         "properties": {
@@ -8284,6 +8591,11 @@
             "type": "string",
             "format": "uuid"
           },
+          "unitGroupId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
           "itemType": {
             "type": "string",
             "enum": [
@@ -8331,6 +8643,11 @@
             "type": "string",
             "format": "uuid"
           },
+          "unitGroupId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
           "itemType": {
             "type": "string",
             "enum": [
@@ -8370,6 +8687,10 @@
             "type": "string",
             "description": "Quantity of component required to make 1 finished unit."
           },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
           "scrapPercent": {
             "type": "string"
           },
@@ -8389,6 +8710,7 @@
           "bomId",
           "componentItemId",
           "quantity",
+          "unitSnapshot",
           "scrapPercent",
           "isPhantom",
           "bom",
@@ -8484,9 +8806,38 @@
           "id"
         ]
       },
+      "AreaDimensionsDto": {
+        "type": "object",
+        "properties": {
+          "widthMetres": {
+            "type": "number",
+            "minimum": 0.001
+          },
+          "lengthMetres": {
+            "type": "number",
+            "minimum": 0.001
+          },
+          "count": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "widthMetres",
+          "lengthMetres",
+          "count"
+        ]
+      },
       "BomLineDto": {
         "type": "object",
         "properties": {
+          "dimensions": {
+            "$ref": "#/components/schemas/AreaDimensionsDto"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "componentItemId": {
             "type": "string",
             "format": "uuid"
@@ -8598,6 +8949,13 @@
       "UpdateBomLineDto": {
         "type": "object",
         "properties": {
+          "dimensions": {
+            "$ref": "#/components/schemas/AreaDimensionsDto"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "componentItemId": {
             "type": "string",
             "format": "uuid"
@@ -8814,6 +9172,10 @@
           "quantityPlanned": {
             "type": "string"
           },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
           "quantityCompleted": {
             "type": "string"
           },
@@ -8924,6 +9286,7 @@
           "locationId",
           "finishedLocationId",
           "quantityPlanned",
+          "unitSnapshot",
           "quantityCompleted",
           "quantityScrapped",
           "status",
@@ -9106,6 +9469,10 @@
           "quantity": {
             "type": "string"
           },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
           "unitPrice": {
             "type": "string"
           },
@@ -9129,6 +9496,7 @@
           "saleId",
           "itemId",
           "quantity",
+          "unitSnapshot",
           "unitPrice",
           "purchaseCost",
           "lineTotal",
@@ -9698,6 +10066,10 @@
       "CreateProductionOrderDto": {
         "type": "object",
         "properties": {
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "bomId": {
             "type": "string",
             "format": "uuid"
@@ -9818,6 +10190,13 @@
       "StockTransferLineDto": {
         "type": "object",
         "properties": {
+          "dimensions": {
+            "$ref": "#/components/schemas/AreaDimensionsDto"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "itemId": {
             "type": "string",
             "format": "uuid"
@@ -9951,6 +10330,10 @@
           "quantity": {
             "type": "string"
           },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
           "unitCost": {
             "type": "string",
             "nullable": true,
@@ -9970,6 +10353,7 @@
           "transferId",
           "itemId",
           "quantity",
+          "unitSnapshot",
           "unitCost",
           "transfer",
           "item",
@@ -10194,6 +10578,10 @@
           "quantity": {
             "type": "string"
           },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
           "unitPrice": {
             "type": "string"
           },
@@ -10214,6 +10602,7 @@
           "purchaseId",
           "itemId",
           "quantity",
+          "unitSnapshot",
           "unitPrice",
           "lineTotal",
           "purchase",
@@ -10736,6 +11125,13 @@
       "PurchaseLineDto": {
         "type": "object",
         "properties": {
+          "dimensions": {
+            "$ref": "#/components/schemas/AreaDimensionsDto"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "itemId": {
             "type": "string",
             "format": "uuid"
@@ -10914,6 +11310,13 @@
       "SaleLineDto": {
         "type": "object",
         "properties": {
+          "dimensions": {
+            "$ref": "#/components/schemas/AreaDimensionsDto"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "itemId": {
             "type": "string",
             "format": "uuid"
@@ -11012,6 +11415,10 @@
       "SaleReturnLineDto": {
         "type": "object",
         "properties": {
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "saleLineId": {
             "type": "string",
             "format": "uuid"

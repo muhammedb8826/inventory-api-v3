@@ -1,3 +1,4 @@
+import type { UnitSnapshot } from '../../units/conversion';
 import {
   Column,
   CreateDateColumn,
@@ -51,6 +52,9 @@ export class ProductionOrder extends UuidBaseEntity {
     scale: 3,
   })
   quantityPlanned: string;
+
+  @Column({ name: 'unit_snapshot', type: 'jsonb', nullable: true })
+  unitSnapshot: UnitSnapshot | null;
 
   @Column({
     name: 'quantity_completed',

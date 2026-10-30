@@ -15,6 +15,7 @@ import { ProductionOrderStatus } from '../../common/enums';
 import { DateRangeQueryDto } from '../../common/dto/date-range.dto';
 
 export class CreateProductionOrderDto {
+  @IsOptional() @IsUUID() unitId?: string;
   @IsUUID()
   bomId: string;
 

@@ -174,7 +174,7 @@ describe('StockService', () => {
     );
 
     expect(row.quantity).toBe('20.000');
-    expect(row.purchasePrice).toBe('15.00');
+    expect(row.purchasePrice).toBe('15.0000000000');
     expect(movements).toHaveLength(1);
     expect(movements[0]).toMatchObject({
       type: StockMovementType.PURCHASE,
@@ -431,5 +431,18 @@ describe('StockService', () => {
 
     await service.getStock('loc-1', 'item-1', manager, { forUpdate: true });
     expect(setLock).toHaveBeenCalledWith('pessimistic_write');
+  });
+  it('retains sub-cent stock costs when a package is divided into small units', async () => {
+    const row = await service.adjust(
+      {
+        locationId: 'loc-1',
+        itemId: 'item-1',
+        quantityDelta: 1000,
+        purchasePrice: 0.0001,
+      },
+      manager,
+    );
+    expect(Number(row.purchasePrice)).toBe(0.0001);
+    expect(Number(movements[0].unitCost)).toBe(0.0001);
   });
 });

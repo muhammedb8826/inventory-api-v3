@@ -1,3 +1,4 @@
+import type { UnitSnapshot } from '../../units/conversion';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { Item } from './item.entity';
 import { Sale } from './sale.entity';
@@ -14,10 +15,13 @@ export class SaleLine extends UuidBaseEntity {
   @Column({ type: 'decimal', precision: 14, scale: 3 })
   quantity: string;
 
-  @Column({ name: 'unit_price', type: 'decimal', precision: 14, scale: 2 })
+  @Column({ name: 'unit_snapshot', type: 'jsonb', nullable: true })
+  unitSnapshot: UnitSnapshot | null;
+
+  @Column({ name: 'unit_price', type: 'decimal', precision: 22, scale: 10 })
   unitPrice: string;
 
-  @Column({ name: 'purchase_cost', type: 'decimal', precision: 14, scale: 2 })
+  @Column({ name: 'purchase_cost', type: 'decimal', precision: 22, scale: 10 })
   purchaseCost: string;
 
   @Column({ type: 'decimal', precision: 14, scale: 2 })

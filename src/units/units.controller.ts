@@ -1,3 +1,5 @@
+import { SaveUnitGroupDto } from './dto/unit-group.dto';
+import { UpdateItemConversionsDto } from './dto/item-conversion.dto';
 import {
   Body,
   Controller,
@@ -20,6 +22,29 @@ export class UnitsController {
   // Every authenticated transaction user needs the catalog; writes require inventory administration.
   @Get() list() {
     return this.units.list();
+  }
+  @Get('groups') groups() {
+    return this.units.groups();
+  }
+  @Post('groups') @RequirePermissions('inventory.write') createGroup(
+    @Body() dto: SaveUnitGroupDto,
+  ) {
+    return this.units.saveGroup(undefined, dto);
+  }
+  @Patch('groups/:id') @RequirePermissions('inventory.write') updateGroup(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveUnitGroupDto,
+  ) {
+    return this.units.saveGroup(id, dto);
+  }
+  @Get('items/:id') options(@Param('id', ParseUUIDPipe) id: string) {
+    return this.units.itemOptions(id);
+  }
+  @Patch('items/:id') @RequirePermissions('inventory.write') configure(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateItemConversionsDto,
+  ) {
+    return this.units.configureItem(id, dto);
   }
   @Post() @RequirePermissions('inventory.write') create(
     @Body() dto: CreateUnitDto,

@@ -1,3 +1,4 @@
+import { AreaDimensionsDto } from '../../units/dto/area-dimensions.dto';
 import { Type } from 'class-transformer';
 import {
   Allow,
@@ -18,6 +19,14 @@ import {
 import { ListQueryDto } from '../../common/dto/list-query.dto';
 
 export class BomLineDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AreaDimensionsDto)
+  dimensions?: AreaDimensionsDto;
+  @IsOptional()
+  @IsUUID()
+  unitId?: string;
+
   @IsUUID()
   componentItemId: string;
 

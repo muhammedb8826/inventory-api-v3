@@ -1,3 +1,4 @@
+import { normalizeLine } from '../units/conversion';
 import {
   BadRequestException,
   Injectable,
@@ -139,6 +140,12 @@ export class ProductionService {
       throw new BadRequestException('BOM has no component lines');
     }
     this.assertBomEffective(bom);
+    const normalized = await normalizeLine(
+      this.orderRepo.manager,
+      bom.finishedItemId,
+      { quantity: dto.quantityPlanned, unitId: dto.unitId },
+    );
+    dto = { ...dto, quantityPlanned: normalized.quantity };
     await this.stockService.assertQuantity(
       bom.finishedItemId,
       dto.quantityPlanned,
@@ -196,6 +203,7 @@ export class ProductionService {
         locationId: dto.locationId,
         finishedLocationId,
         quantityPlanned: dto.quantityPlanned.toFixed(3),
+        unitSnapshot: normalized.unitSnapshot,
         quantityCompleted: '0.000',
         quantityScrapped: '0.000',
         materialsReserved: false,

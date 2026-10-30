@@ -102,8 +102,11 @@ describe('Structured units (isolated PostgreSQL)', () => {
       .send({ reorderPoint: 0.5 })
       .expect(400);
   });
-  it('cannot change the base unit after history exists, including opening zero', async () => {
-    const res = await post({ unitId: PCS, quantity: 0 }).expect(201);
+  it('cannot change the base unit after real movements, even when stock returns to zero', async () => {
+    const res = await post({ unitId: PCS, quantity: 1 }).expect(201);
+    await app
+      .get(StockService)
+      .adjust({ locationId, itemId: res.body.itemId, quantityDelta: -1 });
     await request(app.getHttpServer())
       .patch(`/api/v1/inventory/${res.body.id}`)
       .auth(token, { type: 'bearer' })
@@ -177,5 +180,99 @@ describe('Structured units (isolated PostgreSQL)', () => {
     expect(await app.get(StockService).getQuantity(locationId, item.id)).toBe(
       2.5,
     );
+  });
+  it('rechecks committed stock history after a concurrent unit correction waits on a stock write', async () => {
+    const created = await post({ unitId: PCS, quantity: 0 }).expect(201);
+    const writer = db.createQueryRunner(),
+      corrector = db.createQueryRunner();
+    await writer.connect();
+    await corrector.connect();
+    try {
+      const [{ pid }] = await corrector.query('SELECT pg_backend_pid() AS pid');
+      await writer.startTransaction();
+      await app
+        .get(StockService)
+        .adjust(
+          { locationId, itemId: created.body.itemId, quantityDelta: 1 },
+          writer.manager,
+        );
+      const mutation = corrector
+        .query('UPDATE items SET unit_id=$1 WHERE id=$2', [
+          KG,
+          created.body.itemId,
+        ])
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      let blocked = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const [state] = await db.query(
+          'SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1',
+          [pid],
+        );
+        if (state?.wait_event_type === 'Lock') {
+          blocked = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await writer.commitTransaction();
+      const error = await mutation;
+      expect(blocked).toBe(true);
+      expect(error).toMatchObject({
+        driverError: { constraint: 'item_stock_unit_locked' },
+      });
+      expect(
+        (
+          await db
+            .getRepository(Item)
+            .findOneByOrFail({ id: created.body.itemId })
+        ).unitId,
+      ).toBe(PCS);
+    } finally {
+      if (writer.isTransactionActive) await writer.rollbackTransaction();
+      await writer.release();
+      await corrector.release();
+    }
+  }, 15000);
+  it('corrects unit, cost and reorder point together and rolls back an invalid correction', async () => {
+    const created = await post({
+      unitId: KG,
+      quantity: 0,
+      reorderPoint: 0.5,
+    }).expect(201);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/inventory/${created.body.id}`)
+      .auth(token, { type: 'bearer' })
+      .send({
+        unitId: PCS,
+        purchasePrice: 99,
+        reorderPoint: 0.5,
+        description: 'Must roll back',
+      })
+      .expect(400);
+    const unchanged = (
+      await request(app.getHttpServer())
+        .get(`/api/v1/inventory/${created.body.id}`)
+        .auth(token, { type: 'bearer' })
+        .expect(200)
+    ).body;
+    expect(unchanged.item.unitId).toBe(KG);
+    expect(unchanged.item.description).toBe(created.body.item.description);
+    expect(Number(unchanged.purchasePrice)).toBe(
+      Number(created.body.purchasePrice),
+    );
+    const corrected = (
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inventory/${created.body.id}`)
+        .auth(token, { type: 'bearer' })
+        .send({ unitId: PCS, purchasePrice: 99, reorderPoint: 1 })
+        .expect(200)
+    ).body;
+    expect(corrected.item.unitId).toBe(PCS);
+    expect(Number(corrected.purchasePrice)).toBe(99);
+    expect(Number(corrected.reorderPoint)).toBe(1);
+    expect(Number(corrected.quantity)).toBe(0);
   });
 });

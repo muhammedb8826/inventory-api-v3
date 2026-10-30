@@ -33,8 +33,8 @@ export class StockLevel extends UuidBaseEntity {
   @Column({
     name: 'purchase_price',
     type: 'decimal',
-    precision: 14,
-    scale: 2,
+    precision: 22,
+    scale: 10,
     default: 0,
   })
   purchasePrice: string;

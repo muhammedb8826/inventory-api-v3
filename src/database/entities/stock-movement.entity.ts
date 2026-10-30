@@ -58,8 +58,8 @@ export class StockMovement extends UuidBaseEntity {
   @Column({
     name: 'unit_cost',
     type: 'decimal',
-    precision: 14,
-    scale: 2,
+    precision: 22,
+    scale: 10,
     nullable: true,
   })
   unitCost: string | null;

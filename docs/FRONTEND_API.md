@@ -1,5 +1,7 @@
 # Frontend API Contract — Stock Management System
 
+
+Unit conversions: see [Units of measure](UNITS_OF_MEASURE.md) for alternative-unit inputs, normalized base quantities and prices, historical snapshots, fabric dimensions, and rollout steps. Existing requests without unitId remain base-unit requests.
 This document is the **canonical REST contract** for the NestJS backend (`inventory-api`). The Next.js frontend consumes these endpoints via `NEXT_PUBLIC_API_URL`.
 
 **Frontend guide (overview):** [README.md](./README.md)  

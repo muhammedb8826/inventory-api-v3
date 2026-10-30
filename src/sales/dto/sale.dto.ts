@@ -1,3 +1,4 @@
+import { AreaDimensionsDto } from '../../units/dto/area-dimensions.dto';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -18,6 +19,14 @@ import { EmptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { resolveLineItemIdFromPayload } from '../../common/utils/line-item-id.util';
 
 export class SaleLineDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AreaDimensionsDto)
+  dimensions?: AreaDimensionsDto;
+  @IsOptional()
+  @IsUUID()
+  unitId?: string;
+
   @Transform(({ obj }) =>
     resolveLineItemIdFromPayload(obj as Record<string, unknown>),
   )

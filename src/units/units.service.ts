@@ -1,3 +1,9 @@
+import { UnitGroup } from '../database/entities/unit-group.entity';
+import { SaveUnitGroupDto } from './dto/unit-group.dto';
+import { assertUnitQuantity } from './unit-quantity';
+import { Item } from '../database/entities/item.entity';
+import { conversionOptions, itemConversionFactor } from './conversion';
+import { UpdateItemConversionsDto } from './dto/item-conversion.dto';
 import {
   BadRequestException,
   ConflictException,
@@ -15,8 +21,194 @@ export class UnitsService {
     private readonly repo: Repository<UnitOfMeasure>,
     private readonly db: DataSource,
   ) {}
+  async groups() {
+    return this.db.getRepository(UnitGroup).find({ order: { name: 'ASC' } });
+  }
+  async group(id: string) {
+    const group = await this.db.getRepository(UnitGroup).findOneBy({ id });
+    if (!group || !group.isActive)
+      throw new BadRequestException('Select an active unit group');
+    return group;
+  }
+  async saveGroup(id: string | undefined, dto: SaveUnitGroupDto) {
+    return this.db.transaction(async (manager) => {
+      const repo = manager.getRepository(UnitGroup);
+      if (id)
+        await manager.query(
+          'SELECT id FROM unit_groups WHERE id=$1 FOR UPDATE',
+          [id],
+        );
+      const existing = id ? await repo.findOneBy({ id }) : null;
+      if (id && !existing) throw new NotFoundException('Unit group not found');
+      const units = await manager.getRepository(UnitOfMeasure).find();
+      const base = units.find(
+        (u) => u.id === dto.baseUnitId && u.isActive && !u.requiresReview,
+      );
+      if (!base)
+        throw new BadRequestException('Select an active reviewed base unit');
+      if (existing && existing.baseUnitId !== base.id) {
+        const [{ used }] = await manager.query(
+          'SELECT EXISTS(SELECT 1 FROM items WHERE unit_group_id=$1) AS used',
+          [id],
+        );
+        if (used)
+          throw new BadRequestException(
+            'This group is assigned to items. Create a new group to change its base unit.',
+          );
+      }
+      if (!dto.name.trim())
+        throw new BadRequestException('Group name is required');
+      const seen = new Set<string>();
+      const conversions = dto.conversions.map((entry) => {
+        if (entry.unitId === base.id || seen.has(entry.unitId))
+          throw new BadRequestException(
+            'Select each alternative unit once, excluding the base unit',
+          );
+        seen.add(entry.unitId);
+        const unit = units.find(
+          (u) => u.id === entry.unitId && u.isActive && !u.requiresReview,
+        );
+        if (!unit)
+          throw new BadRequestException(
+            'Select an active reviewed alternative unit',
+          );
+        if (entry.stockQuantity != null && entry.unitQuantity != null) {
+          assertUnitQuantity(
+            base,
+            entry.stockQuantity,
+            'Base reference quantity',
+          );
+          assertUnitQuantity(
+            unit,
+            entry.unitQuantity,
+            'Alternative reference quantity',
+          );
+        }
+        return {
+          unitId: entry.unitId,
+          factor: itemConversionFactor(entry),
+          ...(entry.stockQuantity != null
+            ? {
+                stockQuantity: String(entry.stockQuantity),
+                unitQuantity: String(entry.unitQuantity),
+              }
+            : {}),
+          purchaseDefault: entry.purchaseDefault === true,
+          salesDefault: entry.salesDefault === true,
+        };
+      });
+      for (const key of ['purchaseDefault', 'salesDefault'] as const)
+        if (conversions.filter((c) => c[key]).length > 1)
+          throw new BadRequestException(
+            'Choose one default per transaction type',
+          );
+      try {
+        return await repo.save(
+          repo.create({
+            ...(existing ?? {}),
+            name: dto.name.trim(),
+            category: dto.category,
+            baseUnitId: base.id,
+            baseUnit: base,
+            conversions,
+            isActive: dto.isActive ?? existing?.isActive ?? true,
+          }),
+        );
+      } catch (e) {
+        if ((e as { code?: string }).code === '23505')
+          throw new ConflictException('Unit group name already exists');
+        throw e;
+      }
+    });
+  }
   async list() {
     return this.repo.find({ order: { requiresReview: 'DESC', name: 'ASC' } });
+  }
+  async itemOptions(id: string) {
+    const item = await this.db.getRepository(Item).findOneBy({ id });
+    if (!item) throw new NotFoundException('Item not found');
+    const [{ inUse }] = await this.db.query(
+      'SELECT item_stock_unit_in_use($1) AS "inUse"',
+      [id],
+    );
+    const configured = (item.unitConversions?.length ?? 0) > 0;
+    return {
+      canChangeBaseUnit: !inUse && !configured,
+      baseUnitLockReason: inUse
+        ? 'Stock unit is protected by stock, movements or related documents. Use an alternative conversion for future transactions.'
+        : configured
+          ? 'Remove alternative unit settings before correcting this unused item.'
+          : null,
+      unitGroup: item.unitGroup ?? null,
+      baseUnit: item.stockUnit,
+      options: conversionOptions(item, await this.list()),
+      conversions: item.unitConversions ?? [],
+    };
+  }
+  async configureItem(id: string, dto: UpdateItemConversionsDto) {
+    await this.db.transaction(async (manager) => {
+      await manager.query('SELECT id FROM items WHERE id=$1 FOR UPDATE', [id]);
+      const item = await manager.getRepository(Item).findOneBy({ id });
+      if (!item) throw new NotFoundException('Item not found');
+      if (item.unitGroupId)
+        throw new BadRequestException(
+          'Edit the shared unit group to change conversions for this item',
+        );
+      if (item.stockUnit.requiresReview)
+        throw new BadRequestException(
+          'Review the base unit before configuring conversions',
+        );
+      const units = await manager.getRepository(UnitOfMeasure).find();
+      const seen = new Set<string>();
+      const factors = new Map<string, string>();
+      for (const entry of dto.conversions) {
+        if (seen.has(entry.unitId))
+          throw new BadRequestException('Duplicate conversion unit');
+        seen.add(entry.unitId);
+        const unit = units.find(
+          (u) => u.id === entry.unitId && u.isActive && !u.requiresReview,
+        );
+        if (!unit)
+          throw new BadRequestException('Select an active reviewed unit');
+        const factor = itemConversionFactor(entry);
+        factors.set(entry.unitId, factor);
+        if (entry.stockQuantity != null && entry.unitQuantity != null) {
+          assertUnitQuantity(
+            item.stockUnit,
+            entry.stockQuantity,
+            'Stock reference quantity',
+          );
+          assertUnitQuantity(
+            unit,
+            entry.unitQuantity,
+            'Alternative reference quantity',
+          );
+        }
+        if (unit.id === item.unitId && factor !== '1')
+          throw new BadRequestException(
+            'The base unit must always convert to itself at 1:1',
+          );
+      }
+      for (const key of ['purchaseDefault', 'salesDefault'] as const)
+        if (dto.conversions.filter((c) => c[key]).length > 1)
+          throw new BadRequestException(
+            'Choose only one default unit for each transaction type',
+          );
+      item.unitConversions = dto.conversions.map((c) => ({
+        unitId: c.unitId,
+        factor: factors.get(c.unitId)!,
+        ...(c.stockQuantity != null && c.unitQuantity != null
+          ? {
+              stockQuantity: String(c.stockQuantity),
+              unitQuantity: String(c.unitQuantity),
+            }
+          : {}),
+        purchaseDefault: c.purchaseDefault === true,
+        salesDefault: c.salesDefault === true,
+      }));
+      await manager.getRepository(Item).save(item);
+    });
+    return this.itemOptions(id);
   }
   async resolve(id?: string | null, legacy?: string | null) {
     if (!id && !legacy?.trim())
@@ -86,7 +278,7 @@ export class UnitsService {
       });
       if (!unit) throw new NotFoundException('Unit not found');
       const [{ used }] = await manager.query(
-        'SELECT EXISTS(SELECT 1 FROM items WHERE unit_id = $1) AS used',
+        `SELECT EXISTS(SELECT 1 FROM items WHERE unit_id = $1 OR unit_conversions @> jsonb_build_array(jsonb_build_object('unitId',$1::text))) OR EXISTS(SELECT 1 FROM unit_groups WHERE base_unit_id=$1 OR conversions @> jsonb_build_array(jsonb_build_object('unitId',$1::text))) AS used`,
         [id],
       );
       if (

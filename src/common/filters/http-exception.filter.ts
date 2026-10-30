@@ -40,7 +40,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       response.status(400).json({
         statusCode: 400,
         message:
-          'Stock unit cannot change after inventory history or documents exist. Create a new item for a different base unit.',
+          'Stock unit is protected by inventory history or related documents. Configure an alternative unit conversion instead.',
+        requestId,
+      });
+      return;
+    }
+    if (
+      (exception as { driverError?: { constraint?: string } })?.driverError
+        ?.constraint === 'item_unit_conversions_exist'
+    ) {
+      response.status(400).json({
+        statusCode: 400,
+        message:
+          'Remove alternative unit settings before correcting an unused item stock unit.',
         requestId,
       });
       return;

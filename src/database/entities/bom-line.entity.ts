@@ -1,3 +1,4 @@
+import type { UnitSnapshot } from '../../units/conversion';
 import {
   Column,
   Entity,
@@ -29,6 +30,9 @@ export class BomLine {
   /** Quantity of component required to make 1 finished unit. */
   @Column({ type: 'decimal', precision: 14, scale: 3 })
   quantity: string;
+
+  @Column({ name: 'unit_snapshot', type: 'jsonb', nullable: true })
+  unitSnapshot: UnitSnapshot | null;
 
   @Column({
     name: 'scrap_percent',
