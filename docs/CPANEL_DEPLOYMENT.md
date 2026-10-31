@@ -1,5 +1,22 @@
 # cPanel deployment
 
+## Upgrade error: unit_groups.created_at does not exist
+
+Migration `1749170000000-ReusableUnitGroups` created quoted `createdAt` and `updatedAt` columns on existing installations. The current entity uses `created_at` and `updated_at`. Fresh databases already used the canonical names, masking this difference during fresh-schema testing. Because Item eagerly loads its unit group, the mismatch also breaks inventory and dashboard queries.
+
+Deploy and build the backend source containing `1749220000000-UnitGroupTimestampColumns`, run `npm run migration:run:prod`, and restart the API. This additive migration renames the legacy columns, retaining their original values and types. It is safe on already-correct databases and after the manual recovery below. It does not rewrite stock, costs, conversions or item associations. Do not edit the migration-history table or enable schema synchronization.
+
+For immediate recovery before the code deployment, connect to the application's PostgreSQL database and execute this transaction against the confirmed legacy layout:
+
+```sql
+BEGIN;
+ALTER TABLE unit_groups RENAME COLUMN "createdAt" TO created_at;
+ALTER TABLE unit_groups RENAME COLUMN "updatedAt" TO updated_at;
+COMMIT;
+```
+
+Use `psql -v ON_ERROR_STOP=1` so any error stops execution; an unsuccessful transaction is rolled back when the connection closes. If either column is already renamed, use the repair migration rather than manually modifying additional columns. Apply the new migration after deploying the fix even if the manual repair has already restored service.
+
 The `deploy` job in `.github/workflows/ci.yml` uploads backend source and build configuration after quality checks pass on pushes to `main` or `master`. Pull requests never deploy. To redeploy, run CI (API) or Quality (web) manually on the production branch. The SSH release workflow remains an optional alternative.
 
 ## GitHub settings in each repository
