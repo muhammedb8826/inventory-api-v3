@@ -77,7 +77,7 @@ export class UnitsService {
       if (definition) throw new BadRequestException(definition);
       if (existing && existing.baseUnitId !== base.id) {
         const [{ used }] = await manager.query(
-          'SELECT EXISTS(SELECT 1 FROM items WHERE unit_group_id=$1) AS used',
+          'SELECT EXISTS(SELECT 1 FROM items WHERE unit_group_id=$1) OR EXISTS(SELECT 1 FROM product_families WHERE unit_group_id=$1) AS used',
           [id],
         );
         if (used)
@@ -181,12 +181,14 @@ export class UnitsService {
     return {
       requiresReview: !!reviewIssues.length,
       reviewIssues,
-      canChangeBaseUnit: !inUse && !configured,
-      baseUnitLockReason: inUse
-        ? 'Stock unit is protected by stock, movements or related documents. Use an alternative conversion for future transactions.'
-        : configured
-          ? 'Remove alternative unit settings before correcting this unused item.'
-          : null,
+      canChangeBaseUnit: !item.productFamilyId && !inUse && !configured,
+      baseUnitLockReason: item.productFamilyId
+        ? 'This variant inherits its base stock unit from its product family.'
+        : inUse
+          ? 'Stock unit is protected by stock, movements or related documents. Use an alternative conversion for future transactions.'
+          : configured
+            ? 'Remove alternative unit settings before correcting this unused item.'
+            : null,
       unitGroup: item.unitGroup ?? null,
       baseUnit: item.stockUnit,
       options: conversionOptions(item, units),
@@ -198,6 +200,10 @@ export class UnitsService {
       await manager.query('SELECT id FROM items WHERE id=$1 FOR UPDATE', [id]);
       const item = await manager.getRepository(Item).findOneBy({ id });
       if (!item) throw new NotFoundException('Item not found');
+      if (item.productFamilyId)
+        throw new BadRequestException(
+          'Variants inherit the product family unit configuration. Configure reusable conversions in unit settings.',
+        );
       if (item.unitGroupId)
         throw new BadRequestException(
           'Edit the shared unit group to change conversions for this item',
@@ -359,7 +365,7 @@ export class UnitsService {
       const definition = unitDefinitionIssue({ ...unit, ...dto });
       if (definition) throw new BadRequestException(definition);
       const [{ used }] = await manager.query(
-        `SELECT EXISTS(SELECT 1 FROM items WHERE unit_id = $1 OR unit_conversions @> jsonb_build_array(jsonb_build_object('unitId',$1::text))) OR EXISTS(SELECT 1 FROM unit_groups WHERE base_unit_id=$1 OR conversions @> jsonb_build_array(jsonb_build_object('unitId',$1::text))) AS used`,
+        `SELECT EXISTS(SELECT 1 FROM items WHERE unit_id = $1 OR unit_conversions @> jsonb_build_array(jsonb_build_object('unitId',$1::text))) OR EXISTS(SELECT 1 FROM unit_groups WHERE base_unit_id=$1 OR conversions @> jsonb_build_array(jsonb_build_object('unitId',$1::text))) OR EXISTS(SELECT 1 FROM product_families WHERE unit_id=$1) AS used`,
         [id],
       );
       if (

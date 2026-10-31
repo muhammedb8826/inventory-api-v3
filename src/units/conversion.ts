@@ -144,6 +144,10 @@ export async function normalizeLine<
     .getRepository(Item)
     .findOne({ where: { id: itemId } });
   if (!item) throw new NotFoundException('Item not found');
+  if (item.isActive === false && !preserveHistorical)
+    throw new BadRequestException(
+      'This item is archived. Activate it before creating new transactions.',
+    );
   // Lock the item configuration against simultaneous edits for transactional callers.
   if (manager.queryRunner?.isTransactionActive)
     await manager.query('SELECT id FROM items WHERE id=$1 FOR SHARE', [itemId]);
@@ -155,6 +159,10 @@ export async function normalizeLine<
   const fresh = await manager
     .getRepository(Item)
     .findOneByOrFail({ id: itemId });
+  if (fresh.isActive === false && !preserveHistorical)
+    throw new BadRequestException(
+      'This item is archived. Activate it before creating new transactions.',
+    );
   const units = await manager.getRepository(UnitOfMeasure).find();
   let option = conversionOptions(fresh, units).find(
     (o) => o.unit.id === (line.unitId || fresh.unitId),

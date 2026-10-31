@@ -1848,6 +1848,368 @@
         ]
       }
     },
+    "/api/v1/product-families/attributes": {
+      "get": {
+        "operationId": "ProductsController_attributes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductAttribute"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      },
+      "post": {
+        "operationId": "ProductsController_createAttribute",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveAttributeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductAttribute"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      }
+    },
+    "/api/v1/product-families/attributes/{id}": {
+      "patch": {
+        "operationId": "ProductsController_updateAttribute",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveAttributeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductAttribute"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      }
+    },
+    "/api/v1/product-families/catalog": {
+      "get": {
+        "operationId": "ProductsController_catalog",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Item"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      }
+    },
+    "/api/v1/product-families": {
+      "get": {
+        "operationId": "ProductsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      },
+      "post": {
+        "operationId": "ProductsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveFamilyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFamily"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      }
+    },
+    "/api/v1/product-families/{id}": {
+      "get": {
+        "operationId": "ProductsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      },
+      "patch": {
+        "operationId": "ProductsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveFamilyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFamily"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      }
+    },
+    "/api/v1/product-families/{id}/variants": {
+      "post": {
+        "operationId": "ProductsController_variants",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVariantsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      }
+    },
+    "/api/v1/product-families/{id}/variants/{itemId}": {
+      "patch": {
+        "operationId": "ProductsController_status",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      }
+    },
     "/api/v1/inventory": {
       "get": {
         "operationId": "InventoryController_findAll",
@@ -7780,9 +8142,105 @@
           "id"
         ]
       },
+      "ProductFamily": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "itemType": {
+            "enum": [
+              "RAW",
+              "SEMI",
+              "FINISHED",
+              "OTHER"
+            ],
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string"
+          },
+          "stockUnit": {
+            "$ref": "#/components/schemas/UnitOfMeasure"
+          },
+          "unitGroupId": {
+            "type": "string",
+            "nullable": true
+          },
+          "unitGroup": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnitGroup"
+              }
+            ]
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "itemType",
+          "unitId",
+          "stockUnit",
+          "unitGroupId",
+          "unitGroup",
+          "attributes",
+          "isActive",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
+      },
       "Item": {
         "type": "object",
         "properties": {
+          "productFamilyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "productFamily": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProductFamily"
+              }
+            ]
+          },
+          "variantKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "variantValues": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
           "sku": {
             "type": "string",
             "nullable": true,
@@ -7827,13 +8285,13 @@
             "description": "Compatibility display symbol; stockUnit is the authoritative definition."
           },
           "itemType": {
-            "type": "string",
             "enum": [
               "RAW",
               "SEMI",
               "FINISHED",
               "OTHER"
-            ]
+            ],
+            "type": "string"
           },
           "isPhantom": {
             "type": "boolean",
@@ -7871,6 +8329,10 @@
           }
         },
         "required": [
+          "productFamilyId",
+          "productFamily",
+          "variantKey",
+          "variantValues",
           "sku",
           "barcode",
           "description",
@@ -8625,6 +9087,214 @@
             "type": "boolean"
           }
         }
+      },
+      "ProductAttribute": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "values",
+          "isActive",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
+      },
+      "SaveAttributeDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "values": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "values"
+        ]
+      },
+      "FamilyAttributeDto": {
+        "type": "object",
+        "properties": {
+          "attributeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "values": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            }
+          }
+        },
+        "required": [
+          "attributeId",
+          "values"
+        ]
+      },
+      "SaveFamilyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "itemType": {
+            "enum": [
+              "RAW",
+              "SEMI",
+              "FINISHED",
+              "OTHER"
+            ],
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unitGroupId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "attributes": {
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FamilyAttributeDto"
+            }
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "itemType",
+          "unitId",
+          "attributes"
+        ]
+      },
+      "VariantSelectionDto": {
+        "type": "object",
+        "properties": {
+          "attributeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "attributeId",
+          "value"
+        ]
+      },
+      "CreateVariantDto": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantSelectionDto"
+            }
+          },
+          "sku": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "barcode": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "existingItemId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "values"
+        ]
+      },
+      "CreateVariantsDto": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "variants": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateVariantDto"
+            }
+          }
+        },
+        "required": [
+          "locationId",
+          "variants"
+        ]
+      },
+      "VariantStatusDto": {
+        "type": "object",
+        "properties": {
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "isActive"
+        ]
       },
       "CreateStockAdjustmentDto": {
         "type": "object",

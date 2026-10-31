@@ -13,9 +13,14 @@ import {
 } from 'typeorm';
 import { ItemType } from '../../common/enums';
 import { StockLevel } from './stock-level.entity';
+import { ProductFamily, type VariantValue } from './product-family.entity';
 import { UuidBaseEntity } from './uuid-base.entity';
 
 @Entity('items')
+@Index('item_family_variant_unique', ['productFamilyId', 'variantKey'], {
+  unique: true,
+  where: '"product_family_id" IS NOT NULL',
+})
 @Index('UQ_items_sku_not_null', ['sku'], {
   unique: true,
   where: '"sku" IS NOT NULL',
@@ -25,6 +30,19 @@ import { UuidBaseEntity } from './uuid-base.entity';
   where: '"barcode" IS NOT NULL',
 })
 export class Item extends UuidBaseEntity {
+  @Column({ name: 'product_family_id', type: 'uuid', nullable: true })
+  productFamilyId: string | null;
+  @ManyToOne(() => ProductFamily, { nullable: true })
+  @JoinColumn({ name: 'product_family_id' })
+  productFamily: ProductFamily | null;
+  @Column({ name: 'variant_key', type: 'text', nullable: true })
+  variantKey: string | null;
+  @Column({
+    name: 'variant_values',
+    type: 'jsonb',
+    default: () => "'[]'::jsonb",
+  })
+  variantValues: VariantValue[];
   /** Unique when set (partial unique index `UQ_items_sku_not_null`). */
   @Column({ type: 'varchar', length: 80, nullable: true })
   sku: string | null;

@@ -359,11 +359,37 @@ export class InventoryService {
     const savedId = await this.dataSource.transaction(async (manager) => {
       const itemRepo = manager.getRepository(Item),
         stockRepo = manager.getRepository(StockLevel);
+      await manager.query(
+        'SELECT i.id FROM items i JOIN stock_levels s ON s.item_id=i.id WHERE s.id=$1 FOR UPDATE OF i',
+        [id],
+      );
       const stock = await stockRepo.findOne({
         where: { id },
         relations: { item: true },
       });
       if (!stock) throw new NotFoundException('Inventory record not found');
+      if (
+        stock.item.productFamilyId &&
+        dto.sku !== undefined &&
+        !dto.sku?.trim()
+      )
+        throw new BadRequestException(
+          'A product variant must retain a unique SKU',
+        );
+      if (
+        stock.item.productFamilyId &&
+        ((dto.unitId !== undefined && dto.unitId !== stock.item.unitId) ||
+          dto.unit !== undefined ||
+          (dto.unitGroupId !== undefined &&
+            dto.unitGroupId !== stock.item.unitGroupId) ||
+          (dto.itemType !== undefined &&
+            dto.itemType !== stock.item.itemType) ||
+          (dto.isPhantom !== undefined &&
+            dto.isPhantom !== stock.item.isPhantom))
+      )
+        throw new BadRequestException(
+          'A variant inherits its item type and unit configuration from its product family',
+        );
       const previousUnitId = stock.item.unitId;
 
       const itemChanged =
