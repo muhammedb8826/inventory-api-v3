@@ -439,15 +439,15 @@ scripts/create-database.ts
 
 ## Deploy to cPanel (FTP/FTPS)
 
-CI now deploys its tested build to cPanel after quality passes on pushes to `main` or `master`. Both repositories use the existing `FTP_SERVER_VGATE`, `FTP_USERNAME_VGATE`, `FTP_PASSWORD_VGATE`, and `CPANEL_DIR_VGATE` secrets. The directory must identify that repository's application folder.
+CI now uploads tested backend source to cPanel after quality passes on pushes to `main` or `master`. Both repositories use the existing `FTP_SERVER_VGATE`, `FTP_USERNAME_VGATE`, `FTP_PASSWORD_VGATE`, and `CPANEL_DIR_VGATE` secrets. The directory must identify that repository's application folder.
 
-See [cPanel deployment](docs/CPANEL_DEPLOYMENT.md) for configuration, manual redeploy, dependency installation, migrations and restart behavior. FTP uploads preserve server environment files and user uploads. Automatic restart is opt-in; FTP cannot run migrations or dependency installation.
+See [cPanel deployment](docs/CPANEL_DEPLOYMENT.md) for configuration, manual redeploy, dependency installation, migrations and restart behavior. FTP uploads preserve server environment files and user uploads. After upload, run `npm run build`, then `npm run migration:run`, and restart through cPanel. FTP cannot execute these commands.
 
 ## Production checklist
 
 - [ ] Strong JWT secrets
 - [ ] `NODE_ENV=production` and `DB_SYNCHRONIZE=false` (sync is **forced off** in production)
-- [ ] Run `npm run migration:run:prod` **after every deploy** before/with restart (see `database/README.md`)
+- [ ] Run `npm run migration:run` **after every deploy** before/with restart (see `database/README.md`)
 - [ ] Set `DB_SEED=false` after initial seed
 - [ ] Configure `CORS_ORIGIN` for your frontend domain
 - [ ] Frontend points at `/api/v1`
@@ -460,8 +460,9 @@ Schema changes ship as TypeORM migrations under `src/database/migrations/` (stoc
 
 ```bash
 npm run migration:run
-npm run migration:show
 ```
+
+The same command is used locally and in production and reads source migrations from `src/database/migrations/`.
 
 Do **not** use `DB_SYNCHRONIZE=true` in production.
 

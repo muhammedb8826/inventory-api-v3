@@ -9,10 +9,10 @@ tar -xzf "$DEPLOY_ROOT/incoming-$RELEASE_ID.tgz" -C "$release"
 cd "$release"
 ln -s "$DEPLOY_ROOT/shared/.env" .env
 ln -s "$DEPLOY_ROOT/shared/uploads" uploads
-npm ci --omit=dev
+npm ci --include=dev
 # Back up before applying forward-compatible migrations. Stop on backup/migration failure.
 BACKUP_DIR="$DEPLOY_ROOT/backups" node scripts/backup.mjs
-npm run migration:run:prod
+npm run migration:run
 previous="$(readlink "$DEPLOY_ROOT/current" || true)"
 ln -s "$release" "$DEPLOY_ROOT/current.next"
 mv -Tf "$DEPLOY_ROOT/current.next" "$DEPLOY_ROOT/current"

@@ -129,5 +129,5 @@ jobs:
         run: |
           echo '### cPanel upload completed' >> "$GITHUB_STEP_SUMMARY"
           echo 'Tested source and build configuration uploaded; dist is not uploaded.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'In cPanel Terminal run: npm install --include=dev, then npm run build. Back up and run migrations when needed.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'In cPanel Terminal run: npm run build, then npm run migration:run. Restart the application using cPanel.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Restart in cPanel only after the server build and required migrations succeed. Automatic upload-time restart is disabled.' >> "$GITHUB_STEP_SUMMARY"

@@ -39,9 +39,8 @@ Family requests contain `{ name, description?, itemType, unitId, unitGroupId?, a
 Deploy the backend source first. In the activated cPanel Node.js environment, run:
 
 ```sh
-npm install --include=dev
 npm run build
-npm run migration:run:prod
+npm run migration:run
 ```
 
 Restart the API in cPanel, then deploy the frontend. Migration `1749210000000-ProductVariants` adds two tables and nullable family metadata on items. Existing items are not converted or combined. No seed command is needed: operators configure attributes for their own product range.

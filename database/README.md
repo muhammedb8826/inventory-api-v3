@@ -22,19 +22,18 @@ DB_SEED=true npm run seed
 
 ## Production checklist (cPanel / server)
 
-`@nestjs/cli` and `typescript` are in **dependencies** so `npm run build` works on the server (same as a normal Nest app). Sync the Nest workspace files too: `nest-cli.json`, `tsconfig.json`, `tsconfig.build.json`, `package.json`, and `src/`.
+Upload the source and workspace files: `src/`, `nest-cli.json`, `tsconfig.json`, `tsconfig.build.json`, `package.json`, and the lockfile. Dependencies, including the build tools and TypeScript migration runner, must already be installed in the cPanel Node environment.
 
 ```bash
-# after sync / git pull
-npm install
-npm run deploy:prod   # nest build → check dist/main.js → migrations → restart
+npm run build
+npm run migration:run
 ```
 
-Or: `npm run build` → `ls dist/main.js` → `npm run migration:run:prod` → `touch tmp/restart.txt`.
+Use these same commands locally and on cPanel. `build` compiles the application. `migration:run` reads the source migrations in `src/database/migrations/`, so migration discovery does not depend on the contents of `dist`. Neither command automatically restarts the application; use cPanel's Restart button after both succeed.
 
 - [ ] `NODE_ENV=production`
 - [ ] `DB_SYNCHRONIZE=false` (ignored in production even if set to `true`)
-- [ ] Run migrations on every deploy (`deploy:prod` or `migration:run:prod`)
+- [ ] Run `npm run build`, then `npm run migration:run` on every deploy
 - [ ] Set `DB_SEED=false` after the first seed
 - [ ] Never use TypeORM `synchronize` against production data
 - [ ] API clients use `/api/v1` (OpenAPI at `/api/docs`)
@@ -44,7 +43,7 @@ Or: `npm run build` → `ls dist/main.js` → `npm run migration:run:prod` → `
 
 `synchronize` mutates tables from entity metadata without a reviewable history. Concurrent stock writes and ledger constraints (P0) depend on explicit indexes and enums from migrations (e.g. `1749020000000-StockMovementsAndSkuUnique`).
 
-## Useful commands
+## Optional migration maintenance (not deployment steps)
 
 ```bash
 npm run migration:show

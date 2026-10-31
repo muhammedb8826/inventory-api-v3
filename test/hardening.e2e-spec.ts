@@ -85,9 +85,16 @@ describe('Production invariants (isolated PostgreSQL)', () => {
       )
     ).id;
     customerId = (
-      await db
-        .getRepository(Customer)
-        .save(db.getRepository(Customer).create({ name: 'Hardening customer' }))
+      await db.getRepository(Customer).save(
+        db.getRepository(Customer).create({
+          name: 'Hardening customer',
+          phone:
+            '2547' +
+            String(parseInt(randomUUID().replaceAll('-', '').slice(0, 10), 16))
+              .padStart(12, '0')
+              .slice(-8),
+        }),
+      )
     ).id;
     await stock.adjust({
       locationId,

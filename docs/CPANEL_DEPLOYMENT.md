@@ -4,7 +4,7 @@
 
 Migration `1749170000000-ReusableUnitGroups` created quoted `createdAt` and `updatedAt` columns on existing installations. The current entity uses `created_at` and `updated_at`. Fresh databases already used the canonical names, masking this difference during fresh-schema testing. Because Item eagerly loads its unit group, the mismatch also breaks inventory and dashboard queries.
 
-Deploy and build the backend source containing `1749220000000-UnitGroupTimestampColumns`, run `npm run migration:run:prod`, and restart the API. This additive migration renames the legacy columns, retaining their original values and types. It is safe on already-correct databases and after the manual recovery below. It does not rewrite stock, costs, conversions or item associations. Do not edit the migration-history table or enable schema synchronization.
+Deploy and build the backend source containing `1749220000000-UnitGroupTimestampColumns`, run `npm run migration:run`, and restart the API. This repair migration renames the legacy columns, retaining their original values and types. It is safe on already-correct databases and after the manual recovery below. It does not rewrite stock, costs, conversions or item associations. Do not edit the migration-history table or enable schema synchronization.
 
 For immediate recovery before the code deployment, connect to the application's PostgreSQL database and execute this transaction against the confirmed legacy layout:
 
@@ -40,23 +40,18 @@ The workflow uses repository secrets, not the separate SSH production environmen
 
 Use Node 22 or later. Point Setup Node.js App at the existing FTP application directory. API startup file: `dist/main.js`. Web startup file: `server.js`. Keep production environment settings on the host: `.env` or cPanel environment variables. Never commit secrets. For the API use `DB_SYNCHRONIZE=false` and `DB_SEED=false`.
 
-The backend workflow uploads source rather than `dist`. After **every** backend upload, use cPanel Terminal with the application's Node environment activated:
+The backend workflow uploads source rather than `dist`. With dependencies already installed and the application's Node environment activated, use the same two commands for every deployment:
 
 ```sh
-npm install --include=dev
 npm run build
+npm run migration:run
 ```
 
-Build tools and type declarations remain in `devDependencies`; `--include=dev` installs them even with `NODE_ENV=production`. Do not use `--omit=dev` before building. `decimal.js` is already a runtime dependency and is installed by the same command. The Nest compiler clears the output directory, so schedule the build while the application is stopped or in a maintenance window. If the build fails, fix it and complete a successful build before restarting.
+`build` only compiles the application. `migration:run` only applies pending source migrations from `src/database/migrations/`, independently of compiled files in `dist`. No separate production migration command or combined deploy command is needed.
 
-For releases requiring migrations, back up first, then apply them using the completed build:
+Dependencies, including development build tools and the TypeScript migration runner, must already be installed. Use cPanel's dependency installation when first setting up the app or when the package manifests change; include development dependencies even in production. The Nest compiler clears the output directory, so complete the build successfully before restarting.
 
-```sh
-NODE_ENV=production npm run backup
-NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run:prod
-```
-
-Then restart the application in cPanel and verify the API readiness endpoint (`/api/v1/health/ready`) and web login. Leave automatic restart disabled for releases requiring these manual steps. Backups need PostgreSQL client tools and the application's database credentials.
+After both commands succeed, use cPanel's Restart button and verify the application. Keep `NODE_ENV=production`, `DB_SYNCHRONIZE=false`, and `DB_SEED=false` in the existing server environment. Database backups remain a separate maintenance operation, not an additional deployment command.
 
 The uploader overwrites only staged release files; it does not delete remote files. `.env`, `node_modules`, user uploads, logs, and host configuration are not included in the payload. API payload: `src` (excluding unit test files), `scripts`, `nest-cli.json`, `tsconfig.json`, `tsconfig.build.json`, and package manifests. Existing server `dist` is preserved during upload and replaced by the server build. Web payload: production `.next` (without cache/dev output), `public`, `server.js`, `next.config.mjs`, package manifests. Hidden production build files are explicitly retained in the GitHub artifact.
 

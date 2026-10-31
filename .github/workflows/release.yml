@@ -53,7 +53,7 @@ jobs:
       - run: npm run migration:run
       - run: npm run test:e2e -- --runInBand
       - name: Prepare release
-        run: tar -czf /tmp/release.tgz dist package.json package-lock.json scripts
+        run: tar -czf /tmp/release.tgz dist src nest-cli.json tsconfig.json tsconfig.build.json package.json package-lock.json scripts
       - name: Deploy using verified SSH
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}

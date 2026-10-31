@@ -81,6 +81,11 @@ describe('Inquiry measurements and private reference files', () => {
     customerId = (
       await call('post', '/customers', {
         name: 'Inquiry customer ' + randomUUID(),
+        phone:
+          '2519' +
+          String(parseInt(randomUUID().replaceAll('-', '').slice(0, 10), 16))
+            .padStart(12, '0')
+            .slice(-8),
       }).expect(201)
     ).body.id;
     groupId = (
@@ -122,7 +127,9 @@ describe('Inquiry measurements and private reference files', () => {
       }).expect(201)
     ).body;
     expect(created.contactName).toContain('Inquiry customer');
-    expect(created.phone).toBeNull();
+    expect(created.phone).toBe(
+      (await call('get', `/customers/${customerId}`).expect(200)).body.phone,
+    );
     expect(created.email).toBeNull();
     expect(created.subject).toContain('Inquiry ');
     expect(created.createdBy.id).toBe(created.createdById);

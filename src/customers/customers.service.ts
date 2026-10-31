@@ -15,7 +15,8 @@ export class CustomersService {
     const qb = this.repo
       .createQueryBuilder('c')
       .where('c.is_active = true')
-      .orderBy('c.name', 'ASC');
+      .orderBy('c.created_at', 'DESC')
+      .addOrderBy('c.id', 'DESC');
 
     if (query.search?.trim()) {
       qb.andWhere(

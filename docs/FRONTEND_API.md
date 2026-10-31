@@ -1590,7 +1590,7 @@ The form has Basic information, Products requested, and Additional information, 
 - POST /inquiries/:id/attachments requires inquiries.write and accepts multipart files: PDF/PNG/JPEG/GIF/WebP, at most 5 files per inquiry, 5 MB per file. Signatures are checked. Browser uploads send one file per request to stay below proxy limits. Hash deduplication makes retries safe. If an upload fails, the saved inquiry remains available and Retry save updates it instead of creating a duplicate.
 - GET /inquiries/:id/attachments/:attachmentId requires inquiries.read and returns a download; DELETE requires inquiries.write. References are private database content included in database backups, with no public uploads URL. Metadata responses exclude binary content and hashes.
 
-Deploy backend source, install dependencies, build, back up, run NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run:prod, restart the backend, then deploy the frontend. InquiryMeasurements1749180000000 adds nullable measurement/date columns and the reference-file table without changing historical quantities. No reseeding is needed.
+Deploy backend source, install dependencies, build, back up, run npm run migration:run, restart the backend, then deploy the frontend. InquiryMeasurements1749180000000 adds nullable measurement/date columns and the reference-file table without changing historical quantities. No reseeding is needed.
 
 
 ### Record action attribution

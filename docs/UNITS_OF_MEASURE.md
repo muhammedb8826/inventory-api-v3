@@ -5,7 +5,7 @@ The system uses a managed unit catalog and one base stock unit per item. Purchas
 ## Deploy in this order
 
 1. Back up the production database using the existing backup procedure.
-2. Deploy the new API build and run `npm run migration:run:prod` in the cPanel application Node environment **before restarting the API**. Do not enable DB_SYNCHRONIZE. Build the API on cPanel after installing dependencies with `npm install --include=dev`. The migrations are `1749130000000-StructuredUnits` (foundation) and `1749140000000-UnitConversions` (conversion settings, snapshots and cost precision), followed by `1749150000000-ItemUnitCorrections` (safe unused-item corrections). No separate seeding command is needed.
+2. Deploy the new API build and run `npm run migration:run` in the cPanel application Node environment **before restarting the API**. Do not enable DB_SYNCHRONIZE. Run `npm run build` first; the required dependencies must already be installed. The migrations are `1749130000000-StructuredUnits` (foundation) and `1749140000000-UnitConversions` (conversion settings, snapshots and cost precision), followed by `1749150000000-ItemUnitCorrections` (safe unused-item corrections). No separate seeding command is needed.
 3. Restart the API, then deploy/restart the frontend. Coordinate this rollout: the old item form can send a recognized unit code/symbol, but clients that omit the unit must be updated.
 4. Open **Masters > Units of measure** with `inventory.write` permission and review any flagged legacy definitions.
 
@@ -73,7 +73,7 @@ For a transaction unit of M2, purchase, sales and BOM forms offer **Calculate wi
 - Stored `quantity` and `unitPrice` continue to represent normalized base values for compatibility. `unitSnapshot` exposes the commercial representation. Currency `lineTotal` is authoritative. Clients displaying commercial documents must use the snapshot when present.
 - Sales-return lines accept `unitId` equal to the base unit or the original selling unit; omitted means base quantity. Packaging changes cannot reinterpret a return.
 
-Deploy the API source, install/build on cPanel, back up, run `NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run:prod`, then restart the API before deploying the matching frontend. Source upload alone does not rebuild or restart the application.
+Deploy the API source, install/build on cPanel, back up, run `npm run migration:run`, then restart the API before deploying the matching frontend. Source upload alone does not rebuild or restart the application.
 
 ## Correcting an unused item
 
@@ -107,7 +107,7 @@ For area entry, select an area group and include M2 if a different base is prefe
 
 API: authenticated GET /units/groups; inventory.write POST /units/groups and PATCH /units/groups/:id. Write payload: name, category, baseUnitId, conversions (same factor/ratio structure as item conversions), optional isActive. Inventory create/update accepts unitGroupId; a selected group's base wins over a separately supplied unitId. GET /units/items/:id returns unitGroup plus effective inherited options. Per-item conversion writes are rejected for grouped items.
 
-Deployment: deploy backend source, install dependencies, build, back up, run NODE_ENV=production DB_SYNCHRONIZE=false npm run migration:run:prod, restart backend, then deploy frontend. ReusableUnitGroups1749170000000 seeds groups idempotently and preserves existing items. No reset or reseeding command is required.
+Deployment: deploy backend source, install dependencies, build, back up, run npm run migration:run, restart backend, then deploy frontend. ReusableUnitGroups1749170000000 seeds groups idempotently and preserves existing items. No reset or reseeding command is required.
 
 
 The simplified configuration screen lists categories with their unit chips and highlights the reference unit. Open a category to edit its name and reference unit, then use Add a line in the units table. Type (reference/bigger/smaller) is derived from the ratio; rounding is shown from the catalog precision. Purchase/sales defaults are optional under an expandable section. Unit catalog and legacy review are available separately in an expandable section. Item forms call this selection Unit category; API field names remain unitGroupId and /units/groups for compatibility.
