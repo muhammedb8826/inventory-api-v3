@@ -1,5 +1,15 @@
 # Structured units of measure
 
+## Retrying an incomplete inventory entry
+
+Creating inventory saves the item definition, stock balance, lots, opening movement and reorder point in one database transaction. A failed write rolls back the whole entry instead of leaving an invisible item without a stock row.
+
+For an older incomplete item, retry the form with the same SKU and intended unit configuration. The API can complete that item using its existing ID only when it is active, has no stock rows, movements, lots or document references, and has no variant membership or item-specific conversions. It preserves the creation date and image. Items already used in inventory or documents retain their unit definition.
+
+Opening quantity, cost and reorder point use the configuration's base stock unit. A request supplying a different `unitId` is rejected with the configuration name and expected unit rather than silently overriding the submitted unit. Purchases and sales continue to support configured transaction-unit conversions.
+
+Post-commit notification failures are logged without reporting a saved inventory entry as failed. Receipts sharing a SKU/barcode are serialized to retain consistent item identity and stock totals.
+
 The system uses a managed unit catalog and one base stock unit per item. Purchases, sales, transfers, BOM components and production plans can use alternative units. Stock balances, reservations, costing and manufacturing requirements always use base quantities. Original entered units, quantities, rates and factors are saved on document lines.
 
 ## Deploy in this order

@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -71,6 +72,7 @@ const ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 @Injectable()
 export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
   private readonly itemUploadDir = join(process.cwd(), 'uploads', 'items');
 
   constructor(
@@ -252,107 +254,178 @@ export class InventoryService {
 
   async create(dto: CreateInventoryDto, requestBaseUrl?: string) {
     await this.ensureLocation(dto.locationId);
-    const sku =
-      dto.sku === undefined || dto.sku.trim() === '' ? null : dto.sku.trim();
-    const barcode =
-      dto.barcode === undefined || dto.barcode.trim() === ''
-        ? null
-        : dto.barcode.trim();
-
-    let item = sku ? await this.itemRepo.findOne({ where: { sku } }) : null;
-    if (!item && barcode) {
-      item = await this.itemRepo.findOne({ where: { barcode } });
-    }
-    const group = dto.unitGroupId
-      ? await this.units.group(dto.unitGroupId)
-      : null;
-    const unit = await this.units.resolve(
-      group?.baseUnitId ?? dto.unitId,
-      dto.unit,
-    );
-    assertUnitQuantity(unit, dto.quantity);
-    if (dto.reorderPoint != null)
-      assertUnitQuantity(unit, dto.reorderPoint, 'Reorder point');
-    if (item && item.unitId !== unit.id)
-      throw new BadRequestException(
-        'Selected unit does not match this existing item stock unit',
-      );
-    if (!item) {
-      try {
-        item = await this.itemRepo.save(
-          this.itemRepo.create({
-            sku,
-            barcode,
-            description: dto.description,
-            unitId: unit.id,
-            unitGroupId: group?.id ?? null,
-            unit: unit.symbol,
-            itemType: dto.itemType,
-            isPhantom: dto.isPhantom === true,
-          }),
-        );
-      } catch (err) {
-        if (this.isUniqueViolation(err)) {
-          const msg = String(
-            (err as QueryFailedError).message ?? '',
-          ).toLowerCase();
-          if (msg.includes('barcode')) {
-            throw new ConflictException(
-              'Barcode already in use by another item',
+    const sku = dto.sku?.trim() || null;
+    const barcode = dto.barcode?.trim() || null;
+    let saved: StockLevel;
+    try {
+      saved = await this.dataSource.transaction(async (manager) => {
+        const items = manager.getRepository(Item);
+        const stocks = manager.getRepository(StockLevel);
+        // Serialize inventory creates that share an identifier. Other item creation
+        // paths remain protected by the database's unique SKU/barcode indexes.
+        const keys = [
+          sku ? `inventory-create:sku:${sku}` : null,
+          barcode ? `inventory-create:barcode:${barcode}` : null,
+        ]
+          .filter((key): key is string => !!key)
+          .sort();
+        for (const key of keys)
+          await manager.query(
+            'SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+            [key],
+          );
+        const bySku = sku ? await items.findOneBy({ sku }) : null;
+        const byBarcode = barcode ? await items.findOneBy({ barcode }) : null;
+        if (bySku && byBarcode && bySku.id !== byBarcode.id)
+          throw new ConflictException(
+            'SKU and barcode belong to different items',
+          );
+        let item = bySku ?? byBarcode;
+        if (item) {
+          await manager.query('SELECT id FROM items WHERE id=$1 FOR SHARE', [
+            item.id,
+          ]);
+          item = await items.findOneByOrFail({ id: item.id });
+          if (!item.isActive)
+            throw new BadRequestException(
+              'This item is inactive. Activate it before adding inventory.',
             );
-          }
-          if (sku) {
-            item = await this.itemRepo.findOne({ where: { sku } });
-            if (!item) {
-              throw new ConflictException('SKU already in use by another item');
-            }
-          } else {
-            throw new ConflictException('SKU already in use by another item');
-          }
-        } else {
-          throw err;
+          if (sku && item.sku !== sku)
+            throw new ConflictException(
+              'Barcode belongs to a different SKU. Use the existing item or a different barcode.',
+            );
+          if (barcode && item.barcode && item.barcode !== barcode)
+            throw new ConflictException(
+              'This SKU already has a different barcode',
+            );
         }
-      }
-    } else if (barcode && !item.barcode) {
-      item.barcode = barcode;
-      try {
-        await this.itemRepo.save(item);
-      } catch (err) {
-        if (this.isUniqueViolation(err)) {
-          throw new ConflictException('Barcode already in use by another item');
+        if (dto.unitGroupId)
+          await manager.query(
+            'SELECT id FROM unit_groups WHERE id=$1 FOR SHARE',
+            [dto.unitGroupId],
+          );
+        const group = dto.unitGroupId
+          ? await this.units.group(dto.unitGroupId, manager)
+          : null;
+        if (group && dto.unitId && dto.unitId !== group.baseUnitId)
+          throw new BadRequestException(
+            `Unit configuration "${group.name}" uses ${group.baseUnit.name} (${group.baseUnit.symbol}) as its base stock unit. Refresh the form and enter opening stock in that unit.`,
+          );
+        const unitId = group?.baseUnitId ?? dto.unitId;
+        if (unitId)
+          await manager.query(
+            'SELECT id FROM units_of_measure WHERE id=$1 FOR SHARE',
+            [unitId],
+          );
+        const unit = await this.units.resolve(unitId, dto.unit, manager);
+        assertUnitQuantity(unit, dto.quantity);
+        if (dto.reorderPoint != null)
+          assertUnitQuantity(unit, dto.reorderPoint, 'Reorder point');
+
+        if (
+          item &&
+          sku &&
+          sku === item.sku &&
+          !item.productFamilyId &&
+          Array.isArray(item.unitConversions) &&
+          !item.unitConversions.length
+        ) {
+          const unusedQuery = `SELECT
+            NOT item_stock_unit_in_use($1)
+            AND NOT EXISTS(SELECT 1 FROM stock_levels WHERE item_id=$1)
+            AND NOT EXISTS(SELECT 1 FROM stock_movements WHERE item_id=$1)
+            AND NOT EXISTS(SELECT 1 FROM stock_lots WHERE item_id=$1) AS unused`;
+          let [{ unused }] = await manager.query(unusedQuery, [item.id]);
+          if (unused) {
+            await manager.query('SELECT id FROM items WHERE id=$1 FOR UPDATE', [
+              item.id,
+            ]);
+            // A stock writer may have committed while the stronger lock waited.
+            [{ unused }] = await manager.query(unusedQuery, [item.id]);
+          }
+          if (unused) {
+            // Finish a never-posted item left by an older failed create. Keep its
+            // identity and media, and never reinterpret quantities or documents.
+            await items.update(item.id, {
+              description: dto.description,
+              unitId: unit.id,
+              unit: unit.symbol,
+              unitGroupId: group?.id ?? null,
+              ...(dto.itemType !== undefined ? { itemType: dto.itemType } : {}),
+              ...(dto.isPhantom !== undefined
+                ? { isPhantom: dto.isPhantom }
+                : {}),
+              ...(barcode ? { barcode } : {}),
+            });
+            item = await items.findOneByOrFail({ id: item.id });
+          }
         }
-        throw err;
-      }
+        if (item && item.unitId !== unit.id)
+          throw new BadRequestException(
+            `SKU "${item.sku ?? item.id}" uses ${item.stockUnit?.name ?? item.unit} (${item.stockUnit?.symbol ?? item.unitId}) as its stock unit. It has stock, configuration or document history and cannot be redefined here. Use its existing unit or a configured conversion.`,
+          );
+        if (item && dto.unitGroupId && item.unitGroupId !== dto.unitGroupId)
+          throw new BadRequestException(
+            'Existing item uses a different unit configuration. Select its existing configuration.',
+          );
+        if (!item) {
+          item = await items.save(
+            items.create({
+              sku,
+              barcode,
+              description: dto.description,
+              unitId: unit.id,
+              unitGroupId: group?.id ?? null,
+              unit: unit.symbol,
+              itemType: dto.itemType,
+              isPhantom: dto.isPhantom === true,
+            }),
+          );
+        } else if (barcode && !item.barcode) {
+          await items.update(item.id, { barcode });
+        }
+        const adjusted = await this.stockService.adjust(
+          {
+            locationId: dto.locationId,
+            itemId: item.id,
+            quantityDelta: dto.quantity,
+            purchasePrice: dto.purchasePrice,
+            movement: {
+              type: StockMovementType.OPENING,
+              notes: 'Opening / create inventory',
+            },
+          },
+          manager,
+        );
+        if (dto.reorderPoint !== undefined)
+          await stocks.update(adjusted.id, {
+            reorderPoint: dto.reorderPoint.toFixed(3),
+          });
+        return stocks.findOneOrFail({
+          where: { id: adjusted.id },
+          relations: { item: true, location: true },
+        });
+      });
+    } catch (error) {
+      if (this.isUniqueViolation(error))
+        throw new ConflictException(
+          'SKU or barcode is already in use. Refresh inventory and select the existing item.',
+        );
+      throw error;
     }
-
-    if (dto.unitGroupId && item.unitGroupId !== dto.unitGroupId)
-      throw new BadRequestException(
-        'Existing item uses a different unit group',
+    // A notification failure must not report a failed create after stock committed.
+    try {
+      if (dto.reorderPoint !== undefined)
+        await this.lowStockService.evaluateAfterReorderPointChange(saved.id);
+      else await this.lowStockService.evaluateInitialStock(saved.id);
+    } catch {
+      this.logger.warn(
+        `Inventory ${saved.id} was saved; low-stock notifications could not be evaluated`,
       );
-    if (item.unitId !== unit.id)
-      throw new BadRequestException(
-        'Selected unit does not match the existing item',
-      );
-    const adjusted = await this.stockService.adjust({
-      locationId: dto.locationId,
-      itemId: item.id,
-      quantityDelta: dto.quantity,
-      purchasePrice: dto.purchasePrice,
-      movement: {
-        type: StockMovementType.OPENING,
-        notes: 'Opening / create inventory',
-      },
-    });
-
-    if (dto.reorderPoint !== undefined) {
-      adjusted.reorderPoint = dto.reorderPoint.toFixed(3);
-      const saved = await this.stockRepo.save(adjusted);
-      await this.lowStockService.evaluateAfterReorderPointChange(saved.id);
-      return this.findOne(saved.id, requestBaseUrl);
     }
-
-    await this.lowStockService.evaluateInitialStock(adjusted.id);
-    return this.findOne(adjusted.id, requestBaseUrl);
+    return this.withAvailability(
+      this.attachItemImageUrl(saved, requestBaseUrl),
+    );
   }
 
   async update(id: string, dto: UpdateInventoryDto, requestBaseUrl?: string) {

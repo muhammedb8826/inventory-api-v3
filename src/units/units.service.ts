@@ -11,7 +11,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { UnitOfMeasure } from '../database/entities/unit-of-measure.entity';
 import { CreateUnitDto, UpdateUnitDto } from './dto/unit.dto';
 import {
@@ -41,11 +41,17 @@ export class UnitsService {
       });
     });
   }
-  async group(id: string) {
-    const group = await this.db.getRepository(UnitGroup).findOneBy({ id });
+  async group(id: string, manager?: EntityManager) {
+    const source = manager ?? this.db;
+    const group = await source.getRepository(UnitGroup).findOneBy({ id });
     if (!group || !group.isActive)
       throw new BadRequestException('Select an active unit group');
-    const issues = groupIssues(group, await this.list());
+    const issues = groupIssues(
+      group,
+      manager
+        ? await manager.getRepository(UnitOfMeasure).find()
+        : await this.list(),
+    );
     if (issues.length)
       throw new BadRequestException(
         `Review this unit configuration before assigning it: ${issues[0]}`,
@@ -281,21 +287,26 @@ export class UnitsService {
     });
     return this.itemOptions(id);
   }
-  async resolve(id?: string | null, legacy?: string | null) {
+  async resolve(
+    id?: string | null,
+    legacy?: string | null,
+    manager?: EntityManager,
+  ) {
+    const repo = manager ? manager.getRepository(UnitOfMeasure) : this.repo;
     if (!id && !legacy?.trim())
       throw new BadRequestException(
         'Select a stock unit from the unit catalog',
       );
     let unit: UnitOfMeasure | null = null;
-    if (id) unit = await this.repo.findOneBy({ id });
+    if (id) unit = await repo.findOneBy({ id });
     else {
       const value = legacy!.trim().toLowerCase();
-      unit = await this.repo
+      unit = await repo
         .createQueryBuilder('u')
         .where('LOWER(u.code) = :value', { value })
         .getOne();
       if (!unit) {
-        const matches = await this.repo
+        const matches = await repo
           .createQueryBuilder('u')
           .where(
             '(LOWER(u.symbol) = :value OR LOWER(u.name) = :value) AND u.is_active=true AND u.requires_review=false',

@@ -86,6 +86,11 @@ export class StockService {
     const forUpdate = Boolean(options?.forUpdate && manager);
 
     if (forUpdate) {
+      // Match the item-before-stock lock order used by unit corrections and
+      // inventory creation; the precision trigger also locks this item.
+      await manager!.query('SELECT id FROM items WHERE id=$1 FOR SHARE', [
+        itemId,
+      ]);
       return stock
         .createQueryBuilder('s')
         .where('s.location_id = :locationId', { locationId })
