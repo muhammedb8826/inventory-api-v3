@@ -43,8 +43,11 @@ import { join } from 'path';
 import { UnitsService } from '../units/units.service';
 import { randomUUID } from 'crypto';
 import { addRecordActivity } from '../common/record-activity';
+import { StockLevel } from '../database/entities/stock-level.entity';
+import { applyLocationScope } from '../common/location-scope';
 class CatalogQuery {
   @IsOptional() @IsString() search?: string;
+  @IsOptional() @IsUUID() locationId?: string;
   @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 0 })
@@ -80,6 +83,27 @@ export class ItemCatalogController {
     private readonly db: DataSource,
     private readonly units: UnitsService,
   ) {}
+  private async stockSummary(ids: string[], locationId?: string) {
+    if (!ids.length) return [];
+    const qb = applyLocationScope(
+      this.db.getRepository(StockLevel).createQueryBuilder('s'),
+    )
+      .select('s.itemId', 'itemId')
+      .addSelect('SUM(s.quantity)::text', 'onHand')
+      .addSelect('SUM(s.reserved)::text', 'reserved')
+      .addSelect('SUM(s.quantity - s.reserved)::text', 'available')
+      .addSelect('SUM(s.quantity * s.purchasePrice)::text', 'stockValue')
+      .andWhere('s.itemId IN (:...ids)', { ids })
+      .groupBy('s.itemId');
+    if (locationId) qb.andWhere('s.locationId = :locationId', { locationId });
+    return qb.getRawMany<{
+      itemId: string;
+      onHand: string;
+      reserved: string;
+      available: string;
+      stockValue: string;
+    }>();
+  }
   @Get() @RequirePermissions('inventory.read') async list(
     @Query() query: CatalogQuery,
   ) {
@@ -103,11 +127,25 @@ export class ItemCatalogController {
       .take(limit)
       .getManyAndCount();
     await addRecordActivity(this.db, data, '/items');
+    const summaries = new Map(
+      (
+        await this.stockSummary(
+          data.map((i) => i.id),
+          query.locationId,
+        )
+      ).map((s) => [s.itemId, s]),
+    );
     return {
       data: data.map((i) => ({
         ...i,
         imageUrl: i.imagePath,
         effectiveSalesPrice: effectiveSalesPrice(i),
+        stock: summaries.get(i.id) ?? {
+          onHand: '0',
+          reserved: '0',
+          available: '0',
+          stockValue: '0',
+        },
       })),
       meta: {
         page,
@@ -129,8 +167,23 @@ export class ItemCatalogController {
       [id],
     );
     await addRecordActivity(this.db, item, '/items');
+    const stock = (await this.stockSummary([id]))[0] ?? {
+      onHand: '0',
+      reserved: '0',
+      available: '0',
+      stockValue: '0',
+    };
+    const stockBalances = await applyLocationScope(
+      this.db.getRepository(StockLevel).createQueryBuilder('s'),
+    )
+      .leftJoinAndSelect('s.location', 'location')
+      .andWhere('s.itemId = :id', { id })
+      .orderBy('location.name', 'ASC')
+      .getMany();
     return {
       ...item,
+      stock,
+      stockBalances,
       imageUrl: item.imagePath,
       effectiveSalesPrice: effectiveSalesPrice(item),
       stockUnitLocked:

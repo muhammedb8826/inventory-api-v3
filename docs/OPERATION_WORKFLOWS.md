@@ -1,4 +1,4 @@
-# Catalog, pricing and operation workflows
+# Inventory, pricing and operation workflows
 
 ## Deployment
 
@@ -15,7 +15,7 @@ Existing posted sales and purchases stay posted; they are not reconstructed as p
 
 ## Items and variants
 
-Open **Item catalog** (`/items`) to find every SKU, including archived items and items without stock rows. Open an item to view it, then choose **Edit item**. Editing its name, SKU, barcode, image or active status does not create stock or rewrite historical quantities. Use stock adjustments, receipts or production for quantity changes.
+Open **Inventory ? Products** (`/inventory`) to find every SKU, including archived products and products with zero on-hand stock. The old `/items` link redirects here. On-hand, reserved, available and stock value are calculated from permitted warehouse balances, with zero shown when no balance exists. Filtering a location changes the quantities without hiding the product. Open an item to view it, then choose **Edit item**. Editing its name, SKU, barcode, image or active status does not create stock or rewrite historical quantities. Use stock adjustments, receipts or production for quantity changes. **Stock by location**, **Adjustments** and **Movements** are views within the same Inventory workspace. Variant families, attributes and unit conversions are configured from Inventory; they no longer occupy separate sidebar entries. Bulk archive/restore preserves history.
 
 An item with transactions, documents, conversions or family membership keeps its historical base stock unit. For example, CC-CRM-001 remains in cm after its DAMAGE adjustment. Use a same-category metre conversion (1 m = 100 cm), rather than redefining its history.
 

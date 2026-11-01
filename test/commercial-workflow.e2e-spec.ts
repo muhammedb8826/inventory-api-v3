@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { locationContext } from '../src/common/location-scope';
 import { SalesOrdersController } from '../src/sales/sales-orders.controller';
+import { ItemCatalogController } from '../src/inventory/item-catalog.controller';
 import { Test } from '@nestjs/testing';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { randomUUID } from 'crypto';
@@ -174,6 +175,12 @@ describe('Catalog access, controlled sales and warehouse handover', () => {
     );
     const list = await call('get', `/items?search=${orphan.sku}`).expect(200);
     expect(list.body.data[0].id).toBe(orphan.id);
+    expect(list.body.data[0].stock).toMatchObject({
+      onHand: '0',
+      available: '0',
+      reserved: '0',
+      stockValue: '0',
+    });
     expect(
       (await call('get', `/items/${orphan.id}`).expect(200)).body
         .stockUnitLocked,
@@ -190,6 +197,68 @@ describe('Catalog access, controlled sales and warehouse handover', () => {
     expect(
       await db.getRepository(StockLevel).countBy({ itemId: orphan.id }),
     ).toBe(0);
+  });
+  it('shows per-product stock totals without leaking balances outside the location scope', async () => {
+    const locations = db.getRepository(Location);
+    const other = await locations.save(
+      locations.create({
+        name: 'Other stock ' + randomUUID(),
+        type: LocationType.WAREHOUSE,
+      }),
+    );
+    const items = db.getRepository(Item);
+    const product = await items.save(
+      items.create({
+        description: 'Unified inventory ' + randomUUID(),
+        unitId: PCS,
+        unit: 'pcs',
+      }),
+    );
+    const stocks = db.getRepository(StockLevel);
+    await stocks.save([
+      stocks.create({
+        itemId: product.id,
+        locationId,
+        quantity: '12',
+        reserved: '2',
+        purchasePrice: '3',
+      }),
+      stocks.create({
+        itemId: product.id,
+        locationId: other.id,
+        quantity: '7',
+        reserved: '1',
+        purchasePrice: '4',
+      }),
+    ]);
+    const controller = app.get(ItemCatalogController);
+    const all = await locationContext.run(null, () =>
+      controller.list({ search: product.description }),
+    );
+    expect(all.data[0].stock).toMatchObject({
+      onHand: '19.000',
+      available: '16.000',
+      stockValue: expect.any(String),
+    });
+    expect(Number(all.data[0].stock.stockValue)).toBe(64);
+    const scoped = await locationContext.run([locationId], () =>
+      controller.detail(product.id),
+    );
+    expect(Number(scoped.stock.onHand)).toBe(12);
+    expect(Number(scoped.stock.available)).toBe(10);
+    expect(scoped.stockBalances.map((s) => s.locationId)).toEqual([locationId]);
+    const filtered = await locationContext.run([locationId], () =>
+      controller.list({ search: product.description, locationId: other.id }),
+    );
+    expect(filtered.data[0].stock).toMatchObject({
+      onHand: '0',
+      available: '0',
+    });
+    const denied = await locationContext.run([], () =>
+      controller.detail(product.id),
+    );
+    expect(denied.stock.onHand).toBe('0');
+    expect(denied.stockBalances).toEqual([]);
   });
   it('image changes preserve prices updated concurrently by the pricing manager', async () => {
     const repo = db.getRepository(Item),
