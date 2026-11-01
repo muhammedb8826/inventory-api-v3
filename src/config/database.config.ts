@@ -2,14 +2,15 @@ import { registerAs } from '@nestjs/config';
 
 /**
  * Schema changes must go through TypeORM migrations (`npm run migration:run`).
- * `synchronize` is never enabled in production — even if DB_SYNCHRONIZE=true.
+ * Startup synchronization is disabled in every environment, including development.
+ * Shared enums, triggers and other migration-managed objects cannot be safely
+ * maintained by TypeORM's automatic schema synchronization.
  */
 export default registerAs('database', () => {
-  const isProd = process.env.NODE_ENV === 'production';
   const syncRequested = process.env.DB_SYNCHRONIZE === 'true';
-  if (isProd && syncRequested) {
+  if (syncRequested) {
     console.warn(
-      '[database] DB_SYNCHRONIZE=true ignored in production; use migrations only.',
+      '[database] DB_SYNCHRONIZE=true ignored; use npm run migration:run.',
     );
   }
 
@@ -19,7 +20,7 @@ export default registerAs('database', () => {
     username: process.env.DB_USERNAME ?? 'postgres',
     password: process.env.DB_PASSWORD ?? '',
     database: process.env.DB_DATABASE ?? 'stock_management',
-    synchronize: !isProd && syncRequested,
+    synchronize: false,
     logging: process.env.DB_LOGGING === 'true',
   };
 });

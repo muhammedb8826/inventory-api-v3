@@ -51,7 +51,8 @@ npm run migration:run
 npm run seed
 ```
 
-**Development only:** `DB_SYNCHRONIZE=true` auto-creates tables from entities.
+Schema synchronization is disabled in every environment. Use `npm run migration:run`
+to create or update tables; startup never rewrites migration-managed enums or triggers.
 
 ### 4. Run
 
