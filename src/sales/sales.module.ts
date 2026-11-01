@@ -11,6 +11,7 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
+import { SalesOrdersController } from './sales-orders.controller';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { SalesService } from './sales.service';
     BanksModule,
     NotificationsModule,
   ],
-  controllers: [SalesController],
+  controllers: [SalesController, SalesOrdersController],
   providers: [SalesService],
 })
 export class SalesModule {}

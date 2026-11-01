@@ -1,3 +1,4 @@
+import { effectiveSalesPrice } from './family-pricing';
 import {
   BadRequestException,
   ConflictException,
@@ -18,6 +19,7 @@ import {
   CreateVariantsDto,
   SaveAttributeDto,
   SaveFamilyDto,
+  FamilyPricingDto,
 } from './products.dto';
 import { cleanValues, variantKey } from './variant-rules';
 import { addRecordActivity } from '../common/record-activity';
@@ -112,6 +114,9 @@ export class ProductsService {
       ...family,
       variants: variants.map((v) => ({
         ...v,
+        effectiveSalesPrice: effectiveSalesPrice(
+          Object.assign(new Item(), v, { productFamily: family }),
+        ),
         stocks: stocks
           .filter((s) => s.itemId === v.id)
           .map((s) => ({
@@ -202,6 +207,41 @@ export class ProductsService {
       );
     });
   }
+  async pricing(id: string, dto: FamilyPricingDto) {
+    if (dto.basePrice === undefined)
+      throw new BadRequestException(
+        'Base price is required, or null to require approval',
+      );
+    return this.db.transaction(async (m) => {
+      await m.query('SELECT id FROM product_families WHERE id=$1 FOR UPDATE', [
+        id,
+      ]);
+      const repo = m.getRepository(ProductFamily),
+        family = await repo.findOneBy({ id });
+      if (!family) throw new NotFoundException('Product family not found');
+      const seen = new Set<string>();
+      for (const e of dto.extras) {
+        if (
+          !family.attributes.some(
+            (a) =>
+              a.attributeId === e.attributeId && a.values.includes(e.value),
+          )
+        )
+          throw new BadRequestException(
+            'Price extras must use configured family attribute values',
+          );
+        const key = JSON.stringify([e.attributeId, e.value]);
+        if (seen.has(key))
+          throw new BadRequestException('Duplicate attribute price extra');
+        seen.add(key);
+      }
+      family.priceRules = {
+        basePrice: dto.basePrice === null ? null : dto.basePrice.toFixed(10),
+        extras: dto.extras.map((e) => ({ ...e, extra: e.extra.toFixed(10) })),
+      };
+      return repo.save(family);
+    });
+  }
   async catalog(q = '') {
     return this.db
       .getRepository(Item)
@@ -227,15 +267,17 @@ export class ProductsService {
           throw new BadRequestException(
             'Activate this family before adding variants',
           );
-        const unit = await this.units.resolve(family.unitId);
-        if (family.unitGroupId) await this.units.group(family.unitGroupId);
-        const location = await m
-          .getRepository(Location)
-          .findOneBy({ id: dto.locationId, isActive: true });
-        if (!location)
+        const unit = await this.units.resolve(family.unitId, undefined, m);
+        if (family.unitGroupId) await this.units.group(family.unitGroupId, m);
+        const location = dto.locationId
+          ? await m
+              .getRepository(Location)
+              .findOneBy({ id: dto.locationId, isActive: true })
+          : null;
+        if (dto.locationId && !location)
           throw new BadRequestException('Choose an active stock location');
         const allowed = locationContext.getStore();
-        if (allowed && !allowed.includes(location.id))
+        if (allowed && location && !allowed.includes(location.id))
           throw new BadRequestException('Location access denied');
         await m.query(
           'SELECT id FROM product_attributes WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE',
@@ -318,6 +360,7 @@ export class ProductsService {
           await repo.save(item);
           const stockRepo = m.getRepository(StockLevel);
           if (
+            location &&
             !(await stockRepo.existsBy({
               itemId: item.id,
               locationId: location.id,

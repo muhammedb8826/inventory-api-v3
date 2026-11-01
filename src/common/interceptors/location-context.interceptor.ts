@@ -59,12 +59,17 @@ export class LocationContextInterceptor implements NestInterceptor {
           ])
             check(source?.[key]);
         const resource = path.match(
-          /^(inventory|sales|purchases|production-orders|stock-transfers|stocktakes)\/([0-9a-f-]{36})(?:\/|$)/i,
+          /^(inventory|sales|sales-orders|purchases|purchase-orders|production-orders|stock-transfers|stocktakes)\/([0-9a-f-]{36})(?:\/|$)/i,
         );
         const tables: Record<string, { name: string; fields: string[] }> = {
           inventory: { name: 'stock_levels', fields: ['location_id'] },
           sales: { name: 'sales', fields: ['location_id'] },
+          'sales-orders': { name: 'sales_orders', fields: ['location_id'] },
           purchases: { name: 'purchases', fields: ['location_id'] },
+          'purchase-orders': {
+            name: 'purchase_orders',
+            fields: ['location_id'],
+          },
           'production-orders': {
             name: 'production_orders',
             fields: ['location_id', 'finished_location_id'],

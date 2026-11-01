@@ -415,6 +415,7 @@ describe('Inquiry measurements and private reference files', () => {
       conversions: [{ unitId: u('M2'), factor: 20000 }],
     }).expect(400);
     await call('post', `/inquiries/${result.body.id}/confirm`).expect(201);
+    await db.getRepository(Item).update(item, { salesPrice: '0.0015' });
     const areaSale = await call('post', '/sales', {
       inquiryId: result.body.id,
       customerId,
@@ -487,6 +488,26 @@ describe('Inquiry measurements and private reference files', () => {
     ).body;
     await call('post', `/inquiries/${source.id}/confirm`).expect(201);
     await factor(40);
+    await db.getRepository(Item).update(fabricId, { salesPrice: '2' });
+    const quotation = await call('post', '/sales-orders', {
+      locationId,
+      customerId,
+      inquiryId: source.id,
+      paymentMethod: 'CREDIT',
+      lines: [
+        {
+          itemId: fabricId,
+          unitId: u('ROLL'),
+          inquiryLineId: source.lines[0].id,
+          quantity: 1,
+          unitPrice: 100,
+        },
+      ],
+    }).expect(201);
+    expect(quotation.body.normalizedLines[0].quantity).toBe(50);
+    expect(quotation.body.normalizedLines[0].unitSnapshot.factor).toBe('50');
+    expect(quotation.body.priceExceptions).toEqual([]);
+
     const sale = await call('post', '/sales', {
       locationId,
       customerId,
@@ -541,6 +562,7 @@ describe('Inquiry measurements and private reference files', () => {
         },
       ],
     };
+    await db.getRepository(Item).update(fabricId, { salesPrice: '10' });
     const results = await Promise.all([
       call('post', '/sales', body),
       call('post', '/sales', body),

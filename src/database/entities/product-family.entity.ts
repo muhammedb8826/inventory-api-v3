@@ -23,6 +23,12 @@ export interface VariantValue {
 
 @Entity('product_families')
 export class ProductFamily extends UuidBaseEntity {
+  @Column({
+    name: 'price_rules',
+    type: 'jsonb',
+    default: () => '\'{"basePrice":null,"extras":[]}\'::jsonb',
+  })
+  priceRules: import('../../products/family-pricing').FamilyPrices;
   @Column({ length: 160 }) name: string;
   @Column({ type: 'text', default: '' }) description: string;
   @Column({

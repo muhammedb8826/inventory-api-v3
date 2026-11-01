@@ -5,6 +5,7 @@ import { Purchase } from '../database/entities/purchase.entity';
 import { SupplierCredit } from '../database/entities/supplier-credit.entity';
 import { InventoryModule } from '../inventory/inventory.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PurchaseOrdersController } from './purchase-orders.controller';
 import { PurchasesController } from './purchases.controller';
 import { PurchasesService } from './purchases.service';
 
@@ -15,7 +16,7 @@ import { PurchasesService } from './purchases.service';
     BanksModule,
     NotificationsModule,
   ],
-  controllers: [PurchasesController],
+  controllers: [PurchasesController, PurchaseOrdersController],
   providers: [PurchasesService],
 })
 export class PurchasesModule {}

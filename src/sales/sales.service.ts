@@ -1,3 +1,5 @@
+import type { OrderLineSnapshot } from '../database/entities/sales-order.entity';
+import { assertStandardPrices, commissionExceptions } from './pricing';
 import { CustomerInquiryLine } from '../database/entities/customer-inquiry-line.entity';
 import Decimal from 'decimal.js';
 import { assertUnitQuantity } from '../units/unit-quantity';
@@ -15,6 +17,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -176,7 +179,11 @@ export class SalesService {
       },
     });
     if (!sale) throw new NotFoundException('Sale not found');
-    return sale;
+    const [{ linked }] = await this.dataSource.query(
+      'SELECT EXISTS(SELECT 1 FROM sales_orders WHERE sale_id=$1) AS linked',
+      [id],
+    );
+    return { ...sale, commercialLocked: linked };
   }
 
   async commissionSummary(query: CommissionSummaryQueryDto) {
@@ -334,6 +341,26 @@ export class SalesService {
           relations: { lines: true, credit: true },
         });
         if (!sale) throw new NotFoundException('Sale not found');
+        if (
+          (dto.commissionPercent !== undefined &&
+            dto.commissionPercent !== Number(sale.commissionPercent)) ||
+          (dto.commissionBasis !== undefined &&
+            dto.commissionBasis !== sale.commissionBasis)
+        )
+          throw new BadRequestException(
+            'Commission changes require a new approved quotation',
+          );
+        const [{ linked }] = await manager.query(
+          'SELECT EXISTS(SELECT 1 FROM sales_orders WHERE sale_id=$1) AS linked',
+          [id],
+        );
+        if (
+          linked &&
+          Object.entries(dto).some(([k, v]) => k !== 'notes' && v !== undefined)
+        )
+          throw new BadRequestException(
+            'Delivered order commercial details are locked; only notes can be edited',
+          );
         if (sale.status === DocumentStatus.VOIDED) {
           throw new BadRequestException('Cannot update a voided sale');
         }
@@ -417,6 +444,15 @@ export class SalesService {
       });
       if (!sale) throw new NotFoundException('Sale not found');
       if (
+        (dto.commissionPercent !== undefined &&
+          dto.commissionPercent !== Number(sale.commissionPercent)) ||
+        (dto.commissionBasis !== undefined &&
+          dto.commissionBasis !== sale.commissionBasis)
+      )
+        throw new BadRequestException(
+          'Commission changes require a new approved quotation',
+        );
+      if (
         await manager
           .getRepository(SaleReturn)
           .existsBy({ saleId: id, status: DocumentStatus.ACTIVE })
@@ -474,6 +510,16 @@ export class SalesService {
           manager,
         );
       }
+
+      await assertStandardPrices(manager, lines);
+      const [{ linked }] = await manager.query(
+        'SELECT EXISTS(SELECT 1 FROM sales_orders WHERE sale_id=$1) AS linked',
+        [id],
+      );
+      if (linked)
+        throw new BadRequestException(
+          'Delivered orders are locked. Use an audited return and a new quotation to correct commercial details.',
+        );
 
       const subtotal = lines.reduce(
         (sum, l) => Number(moneyAdd(sum, commercialTotal(l))),
@@ -656,6 +702,14 @@ export class SalesService {
         relations: { lines: true, credit: true },
       });
       if (!sale) throw new NotFoundException('Sale not found');
+      const [{ linked }] = await manager.query(
+        'SELECT EXISTS(SELECT 1 FROM sales_orders WHERE sale_id=$1) AS linked',
+        [id],
+      );
+      if (linked)
+        throw new BadRequestException(
+          'Posted order receipts and deliveries cannot be voided through the legacy endpoint. Use the return or correction process.',
+        );
       if (
         await manager
           .getRepository(SaleReturn)
@@ -723,7 +777,12 @@ export class SalesService {
     userId?: string,
     canNegativeStock = false,
     canOnBehalf = false,
+    posting?: { manager: EntityManager; approvedLines: OrderLineSnapshot[] },
   ) {
+    if (!posting && commissionExceptions(dto).length)
+      throw new BadRequestException(
+        'Commission changes require an approved quotation',
+      );
     const allowNegative = dto.allowNegativeStock === true;
     if (allowNegative && !canNegativeStock) {
       throw new ForbiddenException(
@@ -740,13 +799,13 @@ export class SalesService {
       );
     }
     const stockChanges: StockQuantityChange[] = [];
-    const mtoLinks = await this.resolveMtoLinks(dto);
+    const mtoLinks = await this.resolveMtoLinks(dto, posting?.manager);
     const customerId = dto.customerId ?? mtoLinks.customerId ?? null;
     if (dto.paymentMethod === PaymentMethod.CREDIT && !customerId) {
       throw new BadRequestException('customerId required for credit sales');
     }
 
-    const result = await this.dataSource.transaction(async (manager) => {
+    const post = async (manager: EntityManager) => {
       if (mtoLinks.inquiryId)
         await manager.query(
           'SELECT id FROM customer_inquiries WHERE id=$1 FOR UPDATE',
@@ -762,27 +821,30 @@ export class SalesService {
         throw new BadRequestException(
           'The inquiry customer changed. Reload before creating the sale.',
         );
-      const normalizedLines = await Promise.all(
-        dto.lines.map(async (line) => {
-          const source = mtoLinks.inquiryId
-            ? await manager.getRepository(CustomerInquiryLine).findOneBy({
-                inquiryId: mtoLinks.inquiryId,
-                itemId: line.itemId,
-                ...(line.inquiryLineId ? { id: line.inquiryLineId } : {}),
-              })
-            : null;
-          if (line.inquiryLineId && !source)
-            throw new BadRequestException(
-              'The inquiry products have changed. Reload the inquiry before creating the sale.',
+      const normalizedLines =
+        posting?.approvedLines ??
+        (await Promise.all(
+          dto.lines.map(async (line) => {
+            const source = mtoLinks.inquiryId
+              ? await manager.getRepository(CustomerInquiryLine).findOneBy({
+                  inquiryId: mtoLinks.inquiryId,
+                  itemId: line.itemId,
+                  ...(line.inquiryLineId ? { id: line.inquiryLineId } : {}),
+                })
+              : null;
+            if (line.inquiryLineId && !source)
+              throw new BadRequestException(
+                'The inquiry products have changed. Reload the inquiry before creating the sale.',
+              );
+            return normalizeLine(
+              manager,
+              line.itemId,
+              line,
+              source?.unitSnapshot,
             );
-          return normalizeLine(
-            manager,
-            line.itemId,
-            line,
-            source?.unitSnapshot,
-          );
-        }),
-      );
+          }),
+        ));
+      if (!posting) await assertStandardPrices(manager, normalizedLines);
       if (paysViaBank && dto.bankAccountId) {
         await this.banksService.assertPaymentAccount(
           dto.paymentMethod,
@@ -934,7 +996,11 @@ export class SalesService {
         subtotal: subtotal.toFixed(2),
         creditDueDate: dto.creditDueDate ?? null,
       };
-    });
+    };
+    const result = posting
+      ? await post(posting.manager)
+      : await this.dataSource.transaction(post);
+    if (posting) return { id: result.saleId };
 
     const sale = await this.findOne(result.saleId);
     await this.lowStockService.evaluateChanges(stockChanges);
@@ -951,6 +1017,35 @@ export class SalesService {
       ...sale,
       stockWarnings: result.stockWarnings,
     };
+  }
+
+  async notifyDelivered(id: string, actorId: string) {
+    try {
+      const sale = await this.findOne(id);
+      for (const line of sale.lines ?? []) {
+        const current = await this.stockService.getQuantity(
+          sale.locationId,
+          line.itemId,
+        );
+        await this.lowStockService.evaluate(
+          sale.locationId,
+          line.itemId,
+          current + Number(line.quantity),
+        );
+      }
+      await this.notifications.onSaleRecorded({
+        saleId: id,
+        total: sale.total,
+        actorUserId: actorId,
+        soldByUserId: sale.soldByUserId,
+        stockWarnings: sale.stockWarnings ?? [],
+        creditDueDate: sale.credit?.dueDate ?? null,
+      });
+    } catch {
+      new Logger(SalesService.name).warn(
+        `Sale ${id} was delivered but notification processing failed`,
+      );
+    }
   }
 
   /**

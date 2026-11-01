@@ -71,6 +71,7 @@ describe('Production invariants (isolated PostgreSQL)', () => {
         db.getRepository(Item).create({
           unitId: '10000000-0000-4000-8000-000000000001',
           description: 'Concurrency widget',
+          salesPrice: '20',
           sku: `H-${randomUUID()}`,
         }),
       )
@@ -288,6 +289,7 @@ describe('Production invariants (isolated PostgreSQL)', () => {
       db.getRepository(Item).create({
         unitId: '10000000-0000-4000-8000-000000000001',
         description: 'Returned batch widget',
+        salesPrice: '20',
         sku: `R-${randomUUID()}`,
       }),
     );
@@ -335,6 +337,7 @@ describe('Production invariants (isolated PostgreSQL)', () => {
     ).rejects.toThrow('append only');
   });
   it('settles credit returns and reports net revenue using original cost', async () => {
+    await db.getRepository(Item).update(itemId, { salesPrice: '25' });
     const sale = await sales.create({
       locationId,
       customerId,

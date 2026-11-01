@@ -10,6 +10,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
 import { StockService } from './stock.service';
+import { ItemCatalogController } from './item-catalog.controller';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { StockService } from './stock.service';
     ]),
     NotificationsModule,
   ],
-  controllers: [InventoryController],
+  controllers: [InventoryController, ItemCatalogController],
   providers: [InventoryService, StockService],
   exports: [StockService, InventoryService],
 })

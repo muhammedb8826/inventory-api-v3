@@ -1,4 +1,24 @@
 export const PERMISSION_DEFINITIONS = [
+  {
+    code: 'purchase.receive',
+    name: 'Receive confirmed purchase orders',
+    module: 'purchase',
+  },
+  {
+    code: 'pricing.write',
+    name: 'Configure item sales prices',
+    module: 'sales',
+  },
+  {
+    code: 'sales.approve',
+    name: 'Approve sales price exceptions',
+    module: 'sales',
+  },
+  {
+    code: 'sales.deliver',
+    name: 'Deliver confirmed sales orders',
+    module: 'sales',
+  },
   { code: 'inventory.read', name: 'View inventory', module: 'inventory' },
   { code: 'inventory.write', name: 'Manage inventory', module: 'inventory' },
   { code: 'inventory.delete', name: 'Delete inventory', module: 'inventory' },
@@ -160,7 +180,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   'Production Manager': [
     'production.read',
     'production.write',
-    'production.issue',
     'bom.read',
     'bom.write',
     'inventory.read',
@@ -173,6 +192,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'messages.write',
   ],
   'Warehouse Operator': [
+    'purchase.read',
+    'purchase.receive',
+    'sales.read',
+    'sales.deliver',
     'inventory.read',
     'inventory.write',
     'inventory.adjust',
@@ -202,6 +225,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'messages.write',
   ],
   'Stock Keeper': [
+    'purchase.read',
+    'purchase.receive',
+    'sales.read',
+    'sales.deliver',
     'inventory.read',
     'inventory.write',
     'inventory.import',
@@ -211,7 +238,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'bom.read',
     'bom.write',
     'production.read',
-    'production.write',
     'production.issue',
     'stock_transfer.read',
     'stock_transfer.write',

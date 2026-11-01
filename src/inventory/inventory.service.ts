@@ -1,3 +1,4 @@
+import { effectiveSalesPrice } from '../products/family-pricing';
 import { UnitsService } from '../units/units.service';
 import { assertUnitQuantity } from '../units/unit-quantity';
 import { applyLocationScope } from '../common/location-scope';
@@ -110,6 +111,9 @@ export class InventoryService {
     },
   >(row: T, requestBaseUrl?: string): T {
     if (row.item) {
+      (
+        row.item as Item & { effectiveSalesPrice?: string | null }
+      ).effectiveSalesPrice = effectiveSalesPrice(row.item as Item);
       row.item.imageUrl = absoluteMediaUrl(
         row.item.imagePath ?? null,
         this.mediaBase(requestBaseUrl),
@@ -148,6 +152,7 @@ export class InventoryService {
           .clone()
           .leftJoinAndSelect('stock.item', 'item')
           .leftJoinAndSelect('item.stockUnit', 'stockUnit')
+          .leftJoinAndSelect('item.productFamily', 'productFamily')
           .leftJoinAndSelect('stock.location', 'location')
           .orderBy('stock.updated_at', 'DESC'),
         query.page,
@@ -198,7 +203,7 @@ export class InventoryService {
   async findOne(id: string, requestBaseUrl?: string) {
     const stock = await this.stockRepo.findOne({
       where: { id },
-      relations: { item: true, location: true },
+      relations: { item: { productFamily: true }, location: true },
     });
     if (!stock) throw new NotFoundException('Inventory record not found');
     return this.withAvailability(
@@ -219,6 +224,7 @@ export class InventoryService {
       .createQueryBuilder('stock')
       .leftJoinAndSelect('stock.item', 'item')
       .leftJoinAndSelect('item.stockUnit', 'stockUnit')
+      .leftJoinAndSelect('item.productFamily', 'productFamily')
       .leftJoinAndSelect('stock.location', 'location')
       .where('(item.barcode = :code OR item.sku = :code)', { code: trimmed })
       .andWhere('item.is_active = true');
@@ -350,6 +356,7 @@ export class InventoryService {
               description: dto.description,
               unitId: unit.id,
               unit: unit.symbol,
+              ...(item.unitId !== unit.id ? { salesPrice: null } : {}),
               unitGroupId: group?.id ?? null,
               ...(dto.itemType !== undefined ? { itemType: dto.itemType } : {}),
               ...(dto.isPhantom !== undefined
@@ -403,7 +410,7 @@ export class InventoryService {
           });
         return stocks.findOneOrFail({
           where: { id: adjusted.id },
-          relations: { item: true, location: true },
+          relations: { item: { productFamily: true }, location: true },
         });
       });
     } catch (error) {
@@ -561,6 +568,9 @@ export class InventoryService {
         }
         try {
           await itemRepo.update(stock.itemId, {
+            ...(previousUnitId !== stock.item.unitId
+              ? { salesPrice: null }
+              : {}),
             ...(dto.unitGroupId !== undefined
               ? { unitGroupId: stock.item.unitGroupId }
               : {}),
@@ -640,8 +650,9 @@ export class InventoryService {
 
     const filename = `item-${randomUUID()}${ext}`;
     writeFileSync(join(this.itemUploadDir, filename), file.buffer);
-    stock.item.imagePath = `/uploads/items/${filename}`;
-    await this.itemRepo.save(stock.item);
+    await this.itemRepo.update(stock.itemId, {
+      imagePath: `/uploads/items/${filename}`,
+    });
 
     return this.findOne(stockId, requestBaseUrl);
   }
@@ -649,8 +660,7 @@ export class InventoryService {
   async clearItemImage(stockId: string, requestBaseUrl?: string) {
     const stock = await this.findOne(stockId, requestBaseUrl);
     this.deleteItemImageFile(stock.item.imagePath);
-    stock.item.imagePath = null;
-    await this.itemRepo.save(stock.item);
+    await this.itemRepo.update(stock.itemId, { imagePath: null });
     return this.findOne(stockId, requestBaseUrl);
   }
 

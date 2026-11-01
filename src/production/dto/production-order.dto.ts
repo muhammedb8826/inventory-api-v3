@@ -120,7 +120,7 @@ export class CompleteProductionDto {
   @Min(0.001)
   quantity: number;
 
-  /** If true, auto-issue any missing materials needed for this completion qty. Default true. */
+  /** Deprecated compatibility flag. Must be false; warehouse material handover is required. */
   @IsOptional()
   @IsBoolean()
   autoIssue?: boolean;

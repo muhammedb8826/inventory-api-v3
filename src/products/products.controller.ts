@@ -24,6 +24,7 @@ import {
   SaveFamilyDto,
   VariantStatusDto,
   ProductCatalogQueryDto,
+  FamilyPricingDto,
 } from './products.dto';
 
 @ApiTags('product-families')
@@ -71,6 +72,12 @@ export class ProductsController {
     @Body() dto: SaveFamilyDto,
   ) {
     return this.products.saveFamily(id, dto);
+  }
+  @Patch(':id/pricing') @RequirePermissions('pricing.write') pricing(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: FamilyPricingDto,
+  ) {
+    return this.products.pricing(id, dto);
   }
   @Post(':id/variants') @RequirePermissions('inventory.write') variants(
     @Param('id', ParseUUIDPipe) id: string,

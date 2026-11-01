@@ -3,6 +3,7 @@ import type { ItemConversion } from '../../units/conversion';
 import { UnitOfMeasure } from './unit-of-measure.entity';
 import {
   Column,
+  Check,
   CreateDateColumn,
   Entity,
   Index,
@@ -16,6 +17,10 @@ import { StockLevel } from './stock-level.entity';
 import { ProductFamily, type VariantValue } from './product-family.entity';
 import { UuidBaseEntity } from './uuid-base.entity';
 
+@Check(
+  'items_sales_price_nonnegative',
+  'sales_price IS NULL OR sales_price >= 0',
+)
 @Entity('items')
 @Index('item_family_variant_unique', ['productFamilyId', 'variantKey'], {
   unique: true,
@@ -30,6 +35,15 @@ import { UuidBaseEntity } from './uuid-base.entity';
   where: '"barcode" IS NOT NULL',
 })
 export class Item extends UuidBaseEntity {
+  /** Approved standard sales price per base stock unit; null requires approval. */
+  @Column({
+    name: 'sales_price',
+    type: 'numeric',
+    precision: 24,
+    scale: 10,
+    nullable: true,
+  })
+  salesPrice: string | null;
   @Column({ name: 'product_family_id', type: 'uuid', nullable: true })
   productFamilyId: string | null;
   @ManyToOne(() => ProductFamily, { nullable: true })

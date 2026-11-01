@@ -1,4 +1,6 @@
 import { InquiryAttachment } from './inquiry-attachment.entity';
+import { PurchaseOrder } from './purchase-order.entity';
+import { SalesOrder } from './sales-order.entity';
 import { ProductAttribute } from './product-attribute.entity';
 import { ProductFamily } from './product-family.entity';
 export { ProductAttribute } from './product-attribute.entity';
@@ -87,6 +89,8 @@ import { StockLot } from './stock-lot.entity';
 import { UserLocation } from './user-location.entity';
 
 export const entities = [
+  PurchaseOrder,
+  SalesOrder,
   ProductAttribute,
   ProductFamily,
   InquiryAttachment,

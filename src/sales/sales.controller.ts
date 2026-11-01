@@ -47,7 +47,7 @@ export class SalesController {
   }
 
   @Post()
-  @RequirePermissions('sales.write')
+  @RequirePermissions('sales.write', 'sales.deliver')
   create(
     @Body() dto: CreateSaleDto,
     @CurrentUser() user: JwtPayload,

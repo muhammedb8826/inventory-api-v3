@@ -3,6 +3,9 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsNumber,
+  Min,
+  Max,
   IsBoolean,
   IsEnum,
   IsNotEmpty,
@@ -63,7 +66,7 @@ export class CreateVariantDto {
   @IsOptional() @IsUUID() existingItemId?: string;
 }
 export class CreateVariantsDto {
-  @IsUUID() locationId: string;
+  @IsOptional() @IsUUID() locationId?: string;
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(100)
@@ -76,4 +79,26 @@ export class VariantStatusDto {
 }
 export class ProductCatalogQueryDto {
   @IsOptional() @IsString() @MaxLength(100) q?: string;
+}
+
+export class FamilyPriceExtraDto {
+  @IsUUID() attributeId: string;
+  @IsString() value: string;
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 10 })
+  @Min(0)
+  @Max(99999999999)
+  extra: number;
+}
+export class FamilyPricingDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 10 })
+  @Min(0)
+  @Max(99999999999)
+  basePrice: number | null;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FamilyPriceExtraDto)
+  extras: FamilyPriceExtraDto[];
 }

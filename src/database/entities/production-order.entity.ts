@@ -20,6 +20,29 @@ import { UuidBaseEntity } from './uuid-base.entity';
 
 @Entity('production_orders')
 export class ProductionOrder extends UuidBaseEntity {
+  @Column({
+    name: 'workflow_history',
+    type: 'jsonb',
+    default: () => "'[]'::jsonb",
+  })
+  workflowHistory: { action: string; actorId: string | null; at: string }[];
+  @Column({
+    name: 'materials_requested_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  materialsRequestedAt: Date | null;
+  @Column({ name: 'materials_requested_by_id', type: 'uuid', nullable: true })
+  materialsRequestedById: string | null;
+  @Column({ name: 'handed_over_at', type: 'timestamptz', nullable: true })
+  handedOverAt: Date | null;
+  @Column({ name: 'handed_over_by_id', type: 'uuid', nullable: true })
+  handedOverById: string | null;
+  @Column({ name: 'started_at', type: 'timestamptz', nullable: true })
+  startedAt: Date | null;
+  @Column({ name: 'started_by_id', type: 'uuid', nullable: true }) startedById:
+    | string
+    | null;
   @Column({ name: 'order_number', type: 'varchar', length: 40, nullable: true })
   orderNumber: string | null;
 

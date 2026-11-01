@@ -37,7 +37,7 @@ export class PurchasesController {
   }
 
   @Post()
-  @RequirePermissions('purchase.write')
+  @RequirePermissions('purchase.write', 'purchase.receive')
   create(@Body() dto: CreatePurchaseDto, @CurrentUser() user: JwtPayload) {
     return this.service.create(dto, user.sub);
   }

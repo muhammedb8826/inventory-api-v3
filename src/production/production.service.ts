@@ -1,3 +1,4 @@
+import { User } from '../database/entities/user.entity';
 import { normalizeLine, type UnitSnapshot } from '../units/conversion';
 import {
   BadRequestException,
@@ -126,7 +127,29 @@ export class ProductionService {
       },
     });
     if (!order) throw new NotFoundException('Production order not found');
-    return order;
+    const ids = [
+      ...new Set(
+        (order.workflowHistory ?? [])
+          .map((h) => h.actorId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const users = ids.length
+      ? await this.dataSource
+          .getRepository(User)
+          .createQueryBuilder('u')
+          .select(['u.id', 'u.fullName'])
+          .where('u.id IN (:...ids)', { ids })
+          .getMany()
+      : [];
+    return {
+      ...order,
+      workflowHistory: (order.workflowHistory ?? []).map((h) => ({
+        ...h,
+        actorName:
+          users.find((u) => u.id === h.actorId)?.fullName ?? 'Legacy record',
+      })),
+    };
   }
 
   async create(
@@ -226,6 +249,13 @@ export class ProductionService {
         status: ProductionOrderStatus.DRAFT,
         notes,
         createdById: userId ?? null,
+        workflowHistory: [
+          {
+            action: 'Production order created',
+            actorId: userId ?? null,
+            at: new Date().toISOString(),
+          },
+        ],
         lines: lineSpecs.map((spec) =>
           Object.assign(new ProductionOrderLine(), {
             componentItemId: spec.componentItemId,
@@ -507,6 +537,16 @@ export class ProductionService {
 
         order.status = ProductionOrderStatus.RELEASED;
         order.releasedAt = new Date();
+        order.materialsRequestedAt = new Date();
+        order.materialsRequestedById = actorUserId ?? null;
+        order.workflowHistory = [
+          ...(order.workflowHistory ?? []),
+          {
+            action: 'Materials requested and reserved',
+            actorId: actorUserId ?? null,
+            at: new Date().toISOString(),
+          },
+        ];
         order.materialsReserved = true;
         await orderRepo.save(order);
       })
@@ -539,7 +579,7 @@ export class ProductionService {
     return released;
   }
 
-  async issue(id: string, dto: IssueProductionDto) {
+  async issue(id: string, dto: IssueProductionDto, actorUserId?: string) {
     const stockChanges: {
       locationId: string;
       itemId: string;
@@ -630,6 +670,7 @@ export class ProductionService {
               type: StockMovementType.PRODUCTION_ISSUE,
               refType: 'production_order',
               refId: order.id,
+              createdById: actorUserId ?? null,
             },
           );
         } else {
@@ -647,6 +688,7 @@ export class ProductionService {
                 type: StockMovementType.PRODUCTION_ISSUE,
                 refType: 'production_order',
                 refId: order.id,
+                createdById: actorUserId ?? null,
               },
             },
             manager,
@@ -667,7 +709,16 @@ export class ProductionService {
         });
       }
 
-      order.status = ProductionOrderStatus.IN_PROGRESS;
+      order.handedOverAt = new Date();
+      order.handedOverById = actorUserId ?? null;
+      order.workflowHistory = [
+        ...(order.workflowHistory ?? []),
+        {
+          action: 'Materials handed over',
+          actorId: actorUserId ?? null,
+          at: new Date().toISOString(),
+        },
+      ];
       await orderRepo.save(order);
     });
 
@@ -682,8 +733,51 @@ export class ProductionService {
     return this.findOne(id);
   }
 
+  async start(id: string, actorUserId: string) {
+    await this.dataSource.transaction(async (m) => {
+      await m.query('SELECT id FROM production_orders WHERE id=$1 FOR UPDATE', [
+        id,
+      ]);
+      const repo = m.getRepository(ProductionOrder),
+        order = await repo.findOne({
+          where: { id },
+          relations: { lines: true },
+        });
+      if (!order) throw new NotFoundException('Production order not found');
+      if (order.status !== ProductionOrderStatus.RELEASED)
+        throw new BadRequestException(
+          'Only orders awaiting production can be started',
+        );
+      if (
+        order.lines.some(
+          (l) => Number(l.quantityIssued) + 1e-9 < Number(l.quantityRequired),
+        )
+      )
+        throw new BadRequestException(
+          'Wait for the stock keeper to hand over all requested materials',
+        );
+      order.status = ProductionOrderStatus.IN_PROGRESS;
+      order.startedAt = new Date();
+      order.startedById = actorUserId;
+      order.workflowHistory = [
+        ...(order.workflowHistory ?? []),
+        {
+          action: 'Production started; material handover accepted',
+          actorId: actorUserId,
+          at: new Date().toISOString(),
+        },
+      ];
+      await repo.save(order);
+    });
+    return this.findOne(id);
+  }
+
   async complete(id: string, dto: CompleteProductionDto, actorUserId?: string) {
-    const autoIssue = dto.autoIssue !== false;
+    const autoIssue = false;
+    if (dto.autoIssue)
+      throw new BadRequestException(
+        'The stock keeper must hand over materials before production. Automatic issue is disabled.',
+      );
     const stockChanges: {
       locationId: string;
       itemId: string;
@@ -703,12 +797,9 @@ export class ProductionService {
         relations: { lines: { componentItem: true } },
       });
       if (!order) throw new NotFoundException('Production order not found');
-      if (
-        order.status !== ProductionOrderStatus.RELEASED &&
-        order.status !== ProductionOrderStatus.IN_PROGRESS
-      ) {
+      if (order.status !== ProductionOrderStatus.IN_PROGRESS) {
         throw new BadRequestException(
-          'Only RELEASED or IN_PROGRESS orders can be completed',
+          'Start production after material handover before recording completion',
         );
       }
 
@@ -728,12 +819,15 @@ export class ProductionService {
         const label = this.formatItemLabel(line.componentItem);
         const neededForThis = parseFloat(line.quantityRequired) * ratio;
         const issued = parseFloat(line.quantityIssued);
-        const shortfall = neededForThis - issued;
+        const shortfall =
+          parseFloat(line.quantityRequired) *
+            ((alreadyDone + dto.quantity) / planned) -
+          issued;
 
         if (shortfall > 1e-9) {
           if (!autoIssue) {
             throw new BadRequestException(
-              `Not enough ${label} has been issued. Need ${this.fmtQty(neededForThis)}, already issued ${this.fmtQty(issued)}. Issue materials first or set autoIssue to true`,
+              `Not enough ${label} has been issued. Need ${this.fmtQty(neededForThis)}, already issued ${this.fmtQty(issued)}. Ask the stock keeper to hand over the remaining materials first`,
             );
           }
           const stock = await this.stockService.getStock(
@@ -822,6 +916,7 @@ export class ProductionService {
             type: StockMovementType.PRODUCTION_RECEIPT,
             refType: 'production_order',
             refId: order.id,
+            createdById: actorUserId ?? null,
             notes: `Actual material cost ${materialCost.toFixed(2)}`,
           },
         },
@@ -866,6 +961,16 @@ export class ProductionService {
             .update({ id: order.inquiryId }, { readyForSaleAt: new Date() });
         }
       }
+      order.workflowHistory = [
+        ...(order.workflowHistory ?? []),
+        {
+          action: fullyDone
+            ? 'Production completed; finished goods received'
+            : 'Partial finished goods received',
+          actorId: actorUserId ?? null,
+          at: new Date().toISOString(),
+        },
+      ];
       await orderRepo.save(order);
     });
 
@@ -901,7 +1006,7 @@ export class ProductionService {
   }
 
   /** Reverse completed FG and return proportional issued materials. */
-  async unbuild(id: string, dto: UnbuildProductionDto) {
+  async unbuild(id: string, dto: UnbuildProductionDto, actorUserId?: string) {
     const stockChanges: {
       locationId: string;
       itemId: string;
@@ -994,6 +1099,7 @@ export class ProductionService {
               type: StockMovementType.PRODUCTION_REVERSE,
               refType: 'production_order',
               refId: order.id,
+              createdById: actorUserId ?? null,
               notes: dto.notes ?? 'Unbuild — return materials',
             },
           },
@@ -1014,6 +1120,14 @@ export class ProductionService {
       order.quantityCompleted = (completed - dto.quantity).toFixed(3);
       order.status = ProductionOrderStatus.IN_PROGRESS;
       order.completedAt = null;
+      order.workflowHistory = [
+        ...(order.workflowHistory ?? []),
+        {
+          action: 'Finished goods unbuilt',
+          actorId: actorUserId ?? null,
+          at: new Date().toISOString(),
+        },
+      ];
       await orderRepo.save(order);
     });
 
@@ -1029,7 +1143,7 @@ export class ProductionService {
   }
 
   /** Scrap finished goods already produced (components stay consumed). */
-  async scrap(id: string, dto: ScrapProductionDto) {
+  async scrap(id: string, dto: ScrapProductionDto, actorUserId?: string) {
     const stockChanges: {
       locationId: string;
       itemId: string;
@@ -1091,6 +1205,14 @@ export class ProductionService {
         order.status = ProductionOrderStatus.IN_PROGRESS;
         order.completedAt = null;
       }
+      order.workflowHistory = [
+        ...(order.workflowHistory ?? []),
+        {
+          action: 'Finished goods scrapped',
+          actorId: actorUserId ?? null,
+          at: new Date().toISOString(),
+        },
+      ];
       await orderRepo.save(order);
       stockChanges.push({
         locationId: receiptLocationId,
@@ -1110,7 +1232,7 @@ export class ProductionService {
     return this.findOne(id);
   }
 
-  async cancel(id: string) {
+  async cancel(id: string, actorUserId?: string) {
     const stockChanges: {
       locationId: string;
       itemId: string;
@@ -1172,6 +1294,7 @@ export class ProductionService {
                 type: StockMovementType.PRODUCTION_REVERSE,
                 refType: 'production_order',
                 refId: order.id,
+                createdById: actorUserId ?? null,
                 notes: 'Production order cancelled — return issued materials',
               },
             },
@@ -1189,6 +1312,14 @@ export class ProductionService {
 
       order.materialsReserved = false;
       order.status = ProductionOrderStatus.CANCELLED;
+      order.workflowHistory = [
+        ...(order.workflowHistory ?? []),
+        {
+          action: 'Production cancelled; materials returned',
+          actorId: actorUserId ?? null,
+          at: new Date().toISOString(),
+        },
+      ];
       await orderRepo.save(order);
     });
 

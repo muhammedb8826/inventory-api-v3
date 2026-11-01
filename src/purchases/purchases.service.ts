@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+import type { OrderLineSnapshot } from '../database/entities/sales-order.entity';
 import {
   normalizeLine,
   commercialTotal,
@@ -10,7 +12,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   BankTransactionType,
   CreditSource,
@@ -125,7 +127,11 @@ export class PurchasesService {
       },
     });
     if (!purchase) throw new NotFoundException('Purchase not found');
-    return purchase;
+    const [{ linked }] = await this.dataSource.query(
+      'SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE purchase_id=$1) AS linked',
+      [id],
+    );
+    return { ...purchase, commercialLocked: linked };
   }
 
   private isNotesOnlyUpdate(dto: UpdatePurchaseDto): boolean {
@@ -237,6 +243,14 @@ export class PurchasesService {
         );
       }
 
+      const [{ linked }] = await manager.query(
+        'SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE purchase_id=$1) AS linked',
+        [id],
+      );
+      if (linked)
+        throw new BadRequestException(
+          'Received purchase orders are locked. Use an audited correction instead of changing received lines.',
+        );
       const subtotal = lines.reduce(
         (sum, l) => Number(moneyAdd(sum, commercialTotal(l))),
         0,
@@ -370,6 +384,14 @@ export class PurchasesService {
         relations: { lines: true, credit: true },
       });
       if (!purchase) throw new NotFoundException('Purchase not found');
+      const [{ linked }] = await manager.query(
+        'SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE purchase_id=$1) AS linked',
+        [id],
+      );
+      if (linked)
+        throw new BadRequestException(
+          'Posted order receipts and deliveries cannot be voided through the legacy endpoint. Use the return or correction process.',
+        );
       if (purchase.status === DocumentStatus.VOIDED) {
         throw new BadRequestException('Purchase already voided');
       }
@@ -423,7 +445,32 @@ export class PurchasesService {
     return this.findOne(id);
   }
 
-  async create(dto: CreatePurchaseDto, userId?: string) {
+  async notifyReceived(id: string, actorId: string) {
+    try {
+      const p = await this.findOne(id);
+      await this.notifications.onPurchaseRecorded({
+        purchaseId: id,
+        total: p.total,
+        actorUserId: actorId,
+        creditDueDate: p.credit?.dueDate ?? null,
+      });
+    } catch {
+      new Logger(PurchasesService.name).warn(
+        `Purchase ${id} posted but receipt notification failed`,
+      );
+    }
+  }
+  async create(
+    dto: CreatePurchaseDto,
+    userId?: string,
+    posting?: {
+      manager: EntityManager;
+      lines: (OrderLineSnapshot & {
+        lotNumber?: string;
+        expiryDate?: string;
+      })[];
+    },
+  ) {
     const needsBank =
       dto.paymentMethod === PaymentMethod.BANK ||
       dto.paymentMethod === PaymentMethod.CASH;
@@ -433,10 +480,12 @@ export class PurchasesService {
       );
     }
 
-    const purchaseId = await this.dataSource.transaction(async (manager) => {
-      const normalizedLines = await Promise.all(
-        dto.lines.map((line) => normalizeLine(manager, line.itemId, line)),
-      );
+    const post = async (manager: EntityManager) => {
+      const normalizedLines =
+        posting?.lines ??
+        (await Promise.all(
+          dto.lines.map((line) => normalizeLine(manager, line.itemId, line)),
+        ));
       const subtotal = normalizedLines.reduce(
         (sum, line) => Number(moneyAdd(sum, commercialTotal(line))),
         0,
@@ -530,7 +579,11 @@ export class PurchasesService {
       }
 
       return purchase.id;
-    });
+    };
+    const purchaseId = posting
+      ? await post(posting.manager)
+      : await this.dataSource.transaction(post);
+    if (posting) return { id: purchaseId };
 
     await this.notifications.onPurchaseRecorded({
       purchaseId,

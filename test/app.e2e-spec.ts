@@ -143,6 +143,9 @@ describe('Inventory API smoke (e2e)', () => {
       expect(itemId).toBeTruthy();
       expect(parseFloat(stockRes.body.quantity)).toBe(openingQty);
 
+      await dataSource.query('UPDATE items SET sales_price=40 WHERE id=$1', [
+        itemId,
+      ]);
       const saleRes = await request(app.getHttpServer())
         .post(`${API}/sales`)
         .set(auth)
@@ -181,6 +184,7 @@ describe('Inventory API smoke (e2e)', () => {
 
       const roles = await request(app.getHttpServer())
         .get(`${API}/roles`)
+        .query({ search: 'Sales Representative' })
         .set(auth)
         .expect(200);
       const roleList = Array.isArray(roles.body)
@@ -330,6 +334,9 @@ describe('Inventory API smoke (e2e)', () => {
       expect(Number(purchase.lines[0].unitPrice)).toBe(10);
       expect(Number(purchase.total)).toBe(240);
       expect(purchase.lines[0].unitSnapshot.quantity).toBe('2');
+      await dataSource.query('UPDATE items SET sales_price=15 WHERE id=$1', [
+        itemId,
+      ]);
       const sale = (
         await request(server)
           .post(`${API}/sales`)
@@ -424,6 +431,9 @@ describe('Inventory API smoke (e2e)', () => {
           })
           .expect(201)
       ).body;
+      await dataSource.query('UPDATE items SET sales_price=20 WHERE id=$1', [
+        mass.itemId,
+      ]);
       const massSale = (
         await request(server)
           .post(`${API}/sales`)
@@ -475,6 +485,9 @@ describe('Inventory API smoke (e2e)', () => {
         unitPrice: 15,
         dimensions: { widthMetres: 1.5, lengthMetres: 2, count: 2 },
       };
+      await dataSource.query('UPDATE items SET sales_price=15 WHERE id=$1', [
+        areaStock.itemId,
+      ]);
       const areaSale = (
         await request(server)
           .post(`${API}/sales`)
@@ -632,6 +645,9 @@ describe('Inventory API smoke (e2e)', () => {
       const bank = (Array.isArray(banks) ? banks : banks.data).find(
         (b: { accountType: string }) => b.accountType === 'CASH',
       );
+      await dataSource.query('UPDATE items SET sales_price=90 WHERE id=$1', [
+        stocked.itemId,
+      ]);
       const saleBody = {
         locationId: loc.id,
         paymentMethod: 'CASH',

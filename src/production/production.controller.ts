@@ -9,10 +9,7 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
-import {
-  RequireAnyPermissions,
-  RequirePermissions,
-} from '../common/decorators/permissions.decorator';
+import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import {
@@ -75,9 +72,19 @@ export class ProductionController {
 
   /** Warehouse issue — production.write or dedicated production.issue. */
   @Post(':id/issue')
-  @RequireAnyPermissions('production.write', 'production.issue')
-  issue(@Param('id') id: string, @Body() dto: IssueProductionDto) {
-    return this.productionService.issue(id, dto ?? {});
+  @RequirePermissions('production.issue')
+  issue(
+    @Param('id') id: string,
+    @Body() dto: IssueProductionDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.productionService.issue(id, dto ?? {}, actor.sub);
+  }
+
+  @Post(':id/start')
+  @RequirePermissions('production.write')
+  start(@Param('id') id: string, @CurrentUser() actor: JwtPayload) {
+    return this.productionService.start(id, actor.sub);
   }
 
   @Post(':id/complete')
@@ -92,19 +99,27 @@ export class ProductionController {
 
   @Post(':id/unbuild')
   @RequirePermissions('production.write')
-  unbuild(@Param('id') id: string, @Body() dto: UnbuildProductionDto) {
-    return this.productionService.unbuild(id, dto);
+  unbuild(
+    @Param('id') id: string,
+    @Body() dto: UnbuildProductionDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.productionService.unbuild(id, dto, actor.sub);
   }
 
   @Post(':id/scrap')
   @RequirePermissions('production.write')
-  scrap(@Param('id') id: string, @Body() dto: ScrapProductionDto) {
-    return this.productionService.scrap(id, dto);
+  scrap(
+    @Param('id') id: string,
+    @Body() dto: ScrapProductionDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.productionService.scrap(id, dto, actor.sub);
   }
 
   @Post(':id/cancel')
   @RequirePermissions('production.write')
-  cancel(@Param('id') id: string) {
-    return this.productionService.cancel(id);
+  cancel(@Param('id') id: string, @CurrentUser() actor: JwtPayload) {
+    return this.productionService.cancel(id, actor.sub);
   }
 }

@@ -2119,6 +2119,51 @@
         ]
       }
     },
+    "/api/v1/product-families/{id}/pricing": {
+      "patch": {
+        "operationId": "ProductsController_pricing",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyPricingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFamily"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "product-families"
+        ]
+      }
+    },
     "/api/v1/product-families/{id}/variants": {
       "post": {
         "operationId": "ProductsController_variants",
@@ -3004,6 +3049,130 @@
         ]
       }
     },
+    "/api/v1/items": {
+      "get": {
+        "operationId": "ItemCatalogController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ItemCatalog"
+        ]
+      }
+    },
+    "/api/v1/items/{id}": {
+      "get": {
+        "operationId": "ItemCatalogController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ItemCatalog"
+        ]
+      },
+      "patch": {
+        "operationId": "ItemCatalogController_edit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditCatalogItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ItemCatalog"
+        ]
+      }
+    },
+    "/api/v1/items/{id}/price": {
+      "patch": {
+        "operationId": "ItemCatalogController_price",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ItemCatalog"
+        ]
+      }
+    },
+    "/api/v1/items/{id}/image": {
+      "post": {
+        "operationId": "ItemCatalogController_image",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ItemCatalog"
+        ]
+      }
+    },
     "/api/v1/boms": {
       "get": {
         "operationId": "BomsController_findAll",
@@ -3516,14 +3685,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -3547,14 +3709,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -3600,14 +3755,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -3630,14 +3778,7 @@
         ],
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -3670,17 +3811,33 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "summary": "Warehouse issue — production.write or dedicated production.issue.",
+        "tags": [
+          "Production"
+        ]
+      }
+    },
+    "/api/v1/production-orders/{id}/start": {
+      "post": {
+        "operationId": "ProductionController_start",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
         "tags": [
           "Production"
         ]
@@ -3711,14 +3868,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -3751,14 +3901,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -3791,14 +3934,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -3821,14 +3957,7 @@
         ],
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProductionOrder"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -5428,7 +5557,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Purchase"
+                  "type": "object"
                 }
               }
             }
@@ -5454,14 +5583,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Purchase"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -5492,14 +5614,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Purchase"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -5520,18 +5635,223 @@
         ],
         "responses": {
           "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Purchases"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders": {
+      "get": {
+        "operationId": "PurchaseOrdersController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PurchaseOrders"
+        ]
+      },
+      "post": {
+        "operationId": "PurchaseOrdersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePurchaseDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Purchase"
+                  "$ref": "#/components/schemas/PurchaseOrder"
                 }
               }
             }
           }
         },
         "tags": [
-          "Purchases"
+          "PurchaseOrders"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}": {
+      "get": {
+        "operationId": "PurchaseOrdersController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PurchaseOrders"
+        ]
+      },
+      "patch": {
+        "operationId": "PurchaseOrdersController_edit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePurchaseDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PurchaseOrders"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}/confirm": {
+      "post": {
+        "operationId": "PurchaseOrdersController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PurchaseOrders"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}/receive": {
+      "post": {
+        "operationId": "PurchaseOrdersController_receive",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PurchaseOrders"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}/cancel": {
+      "post": {
+        "operationId": "PurchaseOrdersController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PurchaseOrders"
         ]
       }
     },
@@ -6029,7 +6349,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -6113,14 +6440,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Sale"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -6151,14 +6471,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -6179,14 +6492,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Sale"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -6231,6 +6537,307 @@
         },
         "tags": [
           "Sales"
+        ]
+      }
+    },
+    "/api/v1/sales-orders": {
+      "get": {
+        "operationId": "SalesOrdersController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      },
+      "post": {
+        "operationId": "SalesOrdersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSaleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrder"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      }
+    },
+    "/api/v1/sales-orders/{id}": {
+      "get": {
+        "operationId": "SalesOrdersController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      },
+      "patch": {
+        "operationId": "SalesOrdersController_edit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSaleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      }
+    },
+    "/api/v1/sales-orders/{id}/submit": {
+      "post": {
+        "operationId": "SalesOrdersController_submit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      }
+    },
+    "/api/v1/sales-orders/{id}/approve": {
+      "post": {
+        "operationId": "SalesOrdersController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      }
+    },
+    "/api/v1/sales-orders/{id}/reject": {
+      "post": {
+        "operationId": "SalesOrdersController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      }
+    },
+    "/api/v1/sales-orders/{id}/confirm": {
+      "post": {
+        "operationId": "SalesOrdersController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      }
+    },
+    "/api/v1/sales-orders/{id}/deliver": {
+      "post": {
+        "operationId": "SalesOrdersController_deliver",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
+        ]
+      }
+    },
+    "/api/v1/sales-orders/{id}/cancel": {
+      "post": {
+        "operationId": "SalesOrdersController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SalesOrders"
         ]
       }
     },
@@ -8145,6 +8752,9 @@
       "ProductFamily": {
         "type": "object",
         "properties": {
+          "priceRules": {
+            "type": "object"
+          },
           "name": {
             "type": "string"
           },
@@ -8201,6 +8811,7 @@
           }
         },
         "required": [
+          "priceRules",
           "name",
           "description",
           "itemType",
@@ -8218,6 +8829,11 @@
       "Item": {
         "type": "object",
         "properties": {
+          "salesPrice": {
+            "type": "string",
+            "nullable": true,
+            "description": "Approved standard sales price per base stock unit; null requires approval."
+          },
           "productFamilyId": {
             "type": "string",
             "nullable": true
@@ -8329,6 +8945,7 @@
           }
         },
         "required": [
+          "salesPrice",
           "productFamilyId",
           "productFamily",
           "variantKey",
@@ -9219,6 +9836,49 @@
           "attributes"
         ]
       },
+      "FamilyPriceExtraDto": {
+        "type": "object",
+        "properties": {
+          "attributeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "value": {
+            "type": "string"
+          },
+          "extra": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 99999999999
+          }
+        },
+        "required": [
+          "attributeId",
+          "value",
+          "extra"
+        ]
+      },
+      "FamilyPricingDto": {
+        "type": "object",
+        "properties": {
+          "basePrice": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 99999999999
+          },
+          "extras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FamilyPriceExtraDto"
+            }
+          }
+        },
+        "required": [
+          "basePrice",
+          "extras"
+        ]
+      },
       "VariantSelectionDto": {
         "type": "object",
         "properties": {
@@ -9281,7 +9941,6 @@
           }
         },
         "required": [
-          "locationId",
           "variants"
         ]
       },
@@ -9545,6 +10204,14 @@
             "minimum": 0
           }
         }
+      },
+      "EditCatalogItemDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PriceDto": {
+        "type": "object",
+        "properties": {}
       },
       "BomLine": {
         "type": "object",
@@ -9976,1021 +10643,6 @@
           "locationId"
         ]
       },
-      "InquiryAttachment": {
-        "type": "object",
-        "properties": {
-          "inquiryId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "mime": {
-            "type": "string"
-          },
-          "size": {
-            "type": "number"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "inquiryId",
-          "name",
-          "mime",
-          "size",
-          "createdAt",
-          "id"
-        ]
-      },
-      "ProductionOrderLine": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "productionOrderId": {
-            "type": "string"
-          },
-          "componentItemId": {
-            "type": "string"
-          },
-          "quantityRequired": {
-            "type": "string"
-          },
-          "quantityIssued": {
-            "type": "string"
-          },
-          "issuedValue": {
-            "type": "string",
-            "description": "Cumulative inventory value of issued qty (for actual FG costing)."
-          },
-          "productionOrder": {
-            "$ref": "#/components/schemas/ProductionOrder"
-          },
-          "componentItem": {
-            "$ref": "#/components/schemas/Item"
-          }
-        },
-        "required": [
-          "id",
-          "productionOrderId",
-          "componentItemId",
-          "quantityRequired",
-          "quantityIssued",
-          "issuedValue",
-          "productionOrder",
-          "componentItem"
-        ]
-      },
-      "ProductionOrder": {
-        "type": "object",
-        "properties": {
-          "orderNumber": {
-            "type": "string",
-            "nullable": true
-          },
-          "bomId": {
-            "type": "string"
-          },
-          "finishedItemId": {
-            "type": "string"
-          },
-          "inquiryId": {
-            "type": "string",
-            "nullable": true,
-            "description": "Originating customer inquiry (MTO spine)."
-          },
-          "saleId": {
-            "type": "string",
-            "nullable": true,
-            "description": "Optional sales order / sale this production fulfills."
-          },
-          "locationId": {
-            "type": "string",
-            "description": "Component issue location."
-          },
-          "finishedLocationId": {
-            "type": "string",
-            "nullable": true,
-            "description": "Finished-goods receipt location (defaults to component location)."
-          },
-          "quantityPlanned": {
-            "type": "string"
-          },
-          "unitSnapshot": {
-            "type": "object",
-            "nullable": true
-          },
-          "quantityCompleted": {
-            "type": "string"
-          },
-          "quantityScrapped": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "DRAFT",
-              "RELEASED",
-              "IN_PROGRESS",
-              "COMPLETED",
-              "CANCELLED"
-            ],
-            "type": "string"
-          },
-          "materialsReserved": {
-            "type": "boolean",
-            "description": "True after release reserved component qty."
-          },
-          "notes": {
-            "type": "string",
-            "nullable": true
-          },
-          "createdById": {
-            "type": "string",
-            "nullable": true
-          },
-          "releasedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "completedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "bom": {
-            "$ref": "#/components/schemas/Bom"
-          },
-          "finishedItem": {
-            "$ref": "#/components/schemas/Item"
-          },
-          "inquiry": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CustomerInquiry"
-              }
-            ]
-          },
-          "sale": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Sale"
-              }
-            ]
-          },
-          "location": {
-            "$ref": "#/components/schemas/Location"
-          },
-          "finishedLocation": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Location"
-              }
-            ]
-          },
-          "createdBy": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/User"
-              }
-            ]
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProductionOrderLine"
-            }
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "orderNumber",
-          "bomId",
-          "finishedItemId",
-          "inquiryId",
-          "saleId",
-          "locationId",
-          "finishedLocationId",
-          "quantityPlanned",
-          "unitSnapshot",
-          "quantityCompleted",
-          "quantityScrapped",
-          "status",
-          "materialsReserved",
-          "notes",
-          "createdById",
-          "releasedAt",
-          "completedAt",
-          "bom",
-          "finishedItem",
-          "inquiry",
-          "sale",
-          "location",
-          "finishedLocation",
-          "createdBy",
-          "lines",
-          "createdAt",
-          "updatedAt",
-          "id"
-        ]
-      },
-      "BankTransaction": {
-        "type": "object",
-        "properties": {
-          "bankAccountId": {
-            "type": "string"
-          },
-          "type": {
-            "enum": [
-              "SALE",
-              "PURCHASE",
-              "EXPENSE",
-              "CREDIT_PAYMENT",
-              "CREDIT_RECEIPT",
-              "ADJUSTMENT",
-              "OPENING"
-            ],
-            "type": "string"
-          },
-          "direction": {
-            "enum": [
-              "in",
-              "out"
-            ],
-            "type": "string"
-          },
-          "amount": {
-            "type": "string"
-          },
-          "balanceAfter": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string",
-            "nullable": true
-          },
-          "refType": {
-            "type": "string",
-            "nullable": true
-          },
-          "refId": {
-            "type": "string",
-            "nullable": true
-          },
-          "createdById": {
-            "type": "string",
-            "nullable": true
-          },
-          "bankAccount": {
-            "$ref": "#/components/schemas/BankAccount"
-          },
-          "createdBy": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/User"
-              }
-            ]
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "bankAccountId",
-          "type",
-          "direction",
-          "amount",
-          "balanceAfter",
-          "description",
-          "refType",
-          "refId",
-          "createdById",
-          "bankAccount",
-          "createdBy",
-          "createdAt",
-          "id"
-        ]
-      },
-      "BankAccount": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Short label for dropdowns (e.g. \"Main Bank\", \"Cash\")."
-          },
-          "bankName": {
-            "type": "string",
-            "nullable": true,
-            "description": "Financial institution / provider (e.g. \"Commercial Bank of Ethiopia\")."
-          },
-          "accountHolderName": {
-            "type": "string",
-            "nullable": true,
-            "description": "Name on the account (business or person)."
-          },
-          "accountNumber": {
-            "type": "string",
-            "nullable": true
-          },
-          "accountType": {
-            "enum": [
-              "CASH",
-              "BANK"
-            ],
-            "type": "string"
-          },
-          "balance": {
-            "type": "string"
-          },
-          "isActive": {
-            "type": "boolean"
-          },
-          "transactions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BankTransaction"
-            }
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "bankName",
-          "accountHolderName",
-          "accountNumber",
-          "accountType",
-          "balance",
-          "isActive",
-          "transactions",
-          "createdAt",
-          "updatedAt",
-          "id"
-        ]
-      },
-      "SaleLine": {
-        "type": "object",
-        "properties": {
-          "saleId": {
-            "type": "string"
-          },
-          "itemId": {
-            "type": "string"
-          },
-          "quantity": {
-            "type": "string"
-          },
-          "unitSnapshot": {
-            "type": "object",
-            "nullable": true
-          },
-          "unitPrice": {
-            "type": "string"
-          },
-          "purchaseCost": {
-            "type": "string"
-          },
-          "lineTotal": {
-            "type": "string"
-          },
-          "sale": {
-            "$ref": "#/components/schemas/Sale"
-          },
-          "item": {
-            "$ref": "#/components/schemas/Item"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "saleId",
-          "itemId",
-          "quantity",
-          "unitSnapshot",
-          "unitPrice",
-          "purchaseCost",
-          "lineTotal",
-          "sale",
-          "item",
-          "id"
-        ]
-      },
-      "CustomerCredit": {
-        "type": "object",
-        "properties": {
-          "customerId": {
-            "type": "string"
-          },
-          "saleId": {
-            "type": "string",
-            "nullable": true
-          },
-          "source": {
-            "enum": [
-              "SALE",
-              "PURCHASE",
-              "OPENING"
-            ],
-            "type": "string"
-          },
-          "reference": {
-            "type": "string",
-            "nullable": true
-          },
-          "notes": {
-            "type": "string",
-            "nullable": true
-          },
-          "amount": {
-            "type": "string"
-          },
-          "paidAmount": {
-            "type": "string"
-          },
-          "balance": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "OPEN",
-              "PARTIAL",
-              "PAID"
-            ],
-            "type": "string"
-          },
-          "dueDate": {
-            "type": "string",
-            "nullable": true
-          },
-          "customer": {
-            "$ref": "#/components/schemas/Customer"
-          },
-          "sale": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Sale"
-              }
-            ]
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "customerId",
-          "saleId",
-          "source",
-          "reference",
-          "notes",
-          "amount",
-          "paidAmount",
-          "balance",
-          "status",
-          "dueDate",
-          "customer",
-          "sale",
-          "createdAt",
-          "updatedAt",
-          "id"
-        ]
-      },
-      "Sale": {
-        "type": "object",
-        "properties": {
-          "customerId": {
-            "type": "string",
-            "nullable": true
-          },
-          "inquiryId": {
-            "type": "string",
-            "nullable": true
-          },
-          "productionOrderId": {
-            "type": "string",
-            "nullable": true
-          },
-          "locationId": {
-            "type": "string"
-          },
-          "paymentMethod": {
-            "enum": [
-              "CASH",
-              "BANK",
-              "CREDIT"
-            ],
-            "type": "string"
-          },
-          "bankAccountId": {
-            "type": "string",
-            "nullable": true
-          },
-          "allowNegativeStock": {
-            "type": "boolean"
-          },
-          "subtotal": {
-            "type": "string"
-          },
-          "total": {
-            "type": "string"
-          },
-          "notes": {
-            "type": "string",
-            "nullable": true
-          },
-          "stockWarnings": {
-            "nullable": true,
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "status": {
-            "enum": [
-              "ACTIVE",
-              "VOIDED"
-            ],
-            "type": "string"
-          },
-          "voidedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "createdById": {
-            "type": "string",
-            "nullable": true
-          },
-          "soldByUserId": {
-            "type": "string",
-            "nullable": true
-          },
-          "commissionPercent": {
-            "type": "string"
-          },
-          "commissionBasis": {
-            "enum": [
-              "PROFIT",
-              "SALES"
-            ],
-            "type": "string"
-          },
-          "commissionAmount": {
-            "type": "string"
-          },
-          "customer": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Customer"
-              }
-            ]
-          },
-          "inquiry": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CustomerInquiry"
-              }
-            ]
-          },
-          "productionOrder": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ProductionOrder"
-              }
-            ]
-          },
-          "location": {
-            "$ref": "#/components/schemas/Location"
-          },
-          "bankAccount": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BankAccount"
-              }
-            ]
-          },
-          "createdBy": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/User"
-              }
-            ]
-          },
-          "soldByUser": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/User"
-              }
-            ]
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SaleLine"
-            }
-          },
-          "credit": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CustomerCredit"
-              }
-            ]
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "customerId",
-          "inquiryId",
-          "productionOrderId",
-          "locationId",
-          "paymentMethod",
-          "bankAccountId",
-          "allowNegativeStock",
-          "subtotal",
-          "total",
-          "notes",
-          "stockWarnings",
-          "status",
-          "voidedAt",
-          "createdById",
-          "soldByUserId",
-          "commissionPercent",
-          "commissionBasis",
-          "commissionAmount",
-          "customer",
-          "inquiry",
-          "productionOrder",
-          "location",
-          "bankAccount",
-          "createdBy",
-          "soldByUser",
-          "lines",
-          "credit",
-          "createdAt",
-          "updatedAt",
-          "id"
-        ]
-      },
-      "Customer": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "phone": {
-            "type": "string",
-            "nullable": true
-          },
-          "email": {
-            "type": "string",
-            "nullable": true
-          },
-          "address": {
-            "type": "string",
-            "nullable": true
-          },
-          "isActive": {
-            "type": "boolean"
-          },
-          "sales": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Sale"
-            }
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "phone",
-          "email",
-          "address",
-          "isActive",
-          "sales",
-          "createdAt",
-          "updatedAt",
-          "id"
-        ]
-      },
-      "CustomerInquiryLine": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "inquiryId": {
-            "type": "string"
-          },
-          "itemId": {
-            "type": "string"
-          },
-          "unitSnapshot": {
-            "type": "object",
-            "nullable": true
-          },
-          "quantity": {
-            "type": "string",
-            "nullable": true,
-            "description": "Requested quantity (optional interest qty)."
-          },
-          "notes": {
-            "type": "string",
-            "nullable": true
-          },
-          "inquiry": {
-            "$ref": "#/components/schemas/CustomerInquiry"
-          },
-          "item": {
-            "$ref": "#/components/schemas/Item"
-          }
-        },
-        "required": [
-          "id",
-          "inquiryId",
-          "itemId",
-          "unitSnapshot",
-          "quantity",
-          "notes",
-          "inquiry",
-          "item"
-        ]
-      },
-      "CustomerInquiry": {
-        "type": "object",
-        "properties": {
-          "contactName": {
-            "type": "string"
-          },
-          "phone": {
-            "type": "string",
-            "nullable": true
-          },
-          "email": {
-            "type": "string",
-            "nullable": true
-          },
-          "subject": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "NEW",
-              "IN_PROGRESS",
-              "QUOTED",
-              "CONVERTED",
-              "CLOSED",
-              "CANCELLED"
-            ]
-          },
-          "priority": {
-            "type": "string",
-            "enum": [
-              "LOW",
-              "NORMAL",
-              "HIGH",
-              "URGENT"
-            ]
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "PUBLIC",
-              "INTERNAL"
-            ]
-          },
-          "customerId": {
-            "type": "string",
-            "nullable": true
-          },
-          "assignedToUserId": {
-            "type": "string",
-            "nullable": true
-          },
-          "assignmentStatus": {
-            "type": "string",
-            "enum": [
-              "UNASSIGNED",
-              "PENDING",
-              "ACCEPTED",
-              "DECLINED"
-            ]
-          },
-          "assignedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "acceptedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "createdById": {
-            "type": "string",
-            "nullable": true
-          },
-          "internalNotes": {
-            "type": "string",
-            "nullable": true
-          },
-          "requestedDeliveryDate": {
-            "type": "string",
-            "nullable": true
-          },
-          "attachments": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/InquiryAttachment"
-            }
-          },
-          "followUpAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "convertedSaleId": {
-            "type": "string",
-            "nullable": true
-          },
-          "readyForSaleAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true,
-            "description": "Set when linked production completes — FG ready to sell/deliver."
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "customer": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Customer"
-              }
-            ]
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CustomerInquiryLine"
-            }
-          },
-          "assignedTo": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/User"
-              }
-            ]
-          },
-          "createdBy": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/User"
-              }
-            ]
-          },
-          "convertedSale": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Sale"
-              }
-            ]
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "contactName",
-          "phone",
-          "email",
-          "subject",
-          "message",
-          "status",
-          "priority",
-          "source",
-          "customerId",
-          "assignedToUserId",
-          "assignmentStatus",
-          "assignedAt",
-          "acceptedAt",
-          "createdById",
-          "internalNotes",
-          "requestedDeliveryDate",
-          "attachments",
-          "followUpAt",
-          "convertedSaleId",
-          "readyForSaleAt",
-          "createdAt",
-          "updatedAt",
-          "customer",
-          "lines",
-          "assignedTo",
-          "createdBy",
-          "convertedSale",
-          "id"
-        ]
-      },
       "CreateProductionOrderDto": {
         "type": "object",
         "properties": {
@@ -11078,7 +10730,7 @@
           },
           "autoIssue": {
             "type": "boolean",
-            "description": "If true, auto-issue any missing materials needed for this completion qty. Default true."
+            "description": "Deprecated compatibility flag. Must be false; warehouse material handover is required."
           }
         },
         "required": [
@@ -11494,6 +11146,155 @@
           "id"
         ]
       },
+      "BankTransaction": {
+        "type": "object",
+        "properties": {
+          "bankAccountId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "SALE",
+              "PURCHASE",
+              "EXPENSE",
+              "CREDIT_PAYMENT",
+              "CREDIT_RECEIPT",
+              "ADJUSTMENT",
+              "OPENING"
+            ],
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "in",
+              "out"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "balanceAfter": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "refType": {
+            "type": "string",
+            "nullable": true
+          },
+          "refId": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdById": {
+            "type": "string",
+            "nullable": true
+          },
+          "bankAccount": {
+            "$ref": "#/components/schemas/BankAccount"
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bankAccountId",
+          "type",
+          "direction",
+          "amount",
+          "balanceAfter",
+          "description",
+          "refType",
+          "refId",
+          "createdById",
+          "bankAccount",
+          "createdBy",
+          "createdAt",
+          "id"
+        ]
+      },
+      "BankAccount": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Short label for dropdowns (e.g. \"Main Bank\", \"Cash\")."
+          },
+          "bankName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Financial institution / provider (e.g. \"Commercial Bank of Ethiopia\")."
+          },
+          "accountHolderName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name on the account (business or person)."
+          },
+          "accountNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountType": {
+            "enum": [
+              "CASH",
+              "BANK"
+            ],
+            "type": "string"
+          },
+          "balance": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BankTransaction"
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "bankName",
+          "accountHolderName",
+          "accountNumber",
+          "accountType",
+          "balance",
+          "isActive",
+          "transactions",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
+      },
       "PurchaseLine": {
         "type": "object",
         "properties": {
@@ -11637,12 +11438,12 @@
             "type": "string"
           },
           "paymentMethod": {
+            "type": "string",
             "enum": [
               "CASH",
               "BANK",
               "CREDIT"
-            ],
-            "type": "string"
+            ]
           },
           "bankAccountId": {
             "type": "string",
@@ -11659,11 +11460,11 @@
             "nullable": true
           },
           "status": {
+            "type": "string",
             "enum": [
               "ACTIVE",
               "VOIDED"
-            ],
-            "type": "string"
+            ]
           },
           "voidedAt": {
             "format": "date-time",
@@ -11788,6 +11589,929 @@
             "type": "boolean"
           }
         }
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "sales": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sale"
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "phone",
+          "email",
+          "address",
+          "isActive",
+          "sales",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
+      },
+      "InquiryAttachment": {
+        "type": "object",
+        "properties": {
+          "inquiryId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "size": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "inquiryId",
+          "name",
+          "mime",
+          "size",
+          "createdAt",
+          "id"
+        ]
+      },
+      "CustomerInquiryLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "inquiryId": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "string",
+            "nullable": true,
+            "description": "Requested quantity (optional interest qty)."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "inquiry": {
+            "$ref": "#/components/schemas/CustomerInquiry"
+          },
+          "item": {
+            "$ref": "#/components/schemas/Item"
+          }
+        },
+        "required": [
+          "id",
+          "inquiryId",
+          "itemId",
+          "unitSnapshot",
+          "quantity",
+          "notes",
+          "inquiry",
+          "item"
+        ]
+      },
+      "CustomerInquiry": {
+        "type": "object",
+        "properties": {
+          "contactName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "subject": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "IN_PROGRESS",
+              "QUOTED",
+              "CONVERTED",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "NORMAL",
+              "HIGH",
+              "URGENT"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "PUBLIC",
+              "INTERNAL"
+            ]
+          },
+          "customerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "assignedToUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "assignmentStatus": {
+            "type": "string",
+            "enum": [
+              "UNASSIGNED",
+              "PENDING",
+              "ACCEPTED",
+              "DECLINED"
+            ]
+          },
+          "assignedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "acceptedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "createdById": {
+            "type": "string",
+            "nullable": true
+          },
+          "internalNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedDeliveryDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InquiryAttachment"
+            }
+          },
+          "followUpAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "convertedSaleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "readyForSaleAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Set when linked production completes — FG ready to sell/deliver."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "customer": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Customer"
+              }
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerInquiryLine"
+            }
+          },
+          "assignedTo": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "convertedSale": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sale"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contactName",
+          "phone",
+          "email",
+          "subject",
+          "message",
+          "status",
+          "priority",
+          "source",
+          "customerId",
+          "assignedToUserId",
+          "assignmentStatus",
+          "assignedAt",
+          "acceptedAt",
+          "createdById",
+          "internalNotes",
+          "requestedDeliveryDate",
+          "attachments",
+          "followUpAt",
+          "convertedSaleId",
+          "readyForSaleAt",
+          "createdAt",
+          "updatedAt",
+          "customer",
+          "lines",
+          "assignedTo",
+          "createdBy",
+          "convertedSale",
+          "id"
+        ]
+      },
+      "ProductionOrderLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "productionOrderId": {
+            "type": "string"
+          },
+          "componentItemId": {
+            "type": "string"
+          },
+          "quantityRequired": {
+            "type": "string"
+          },
+          "quantityIssued": {
+            "type": "string"
+          },
+          "issuedValue": {
+            "type": "string",
+            "description": "Cumulative inventory value of issued qty (for actual FG costing)."
+          },
+          "productionOrder": {
+            "$ref": "#/components/schemas/ProductionOrder"
+          },
+          "componentItem": {
+            "$ref": "#/components/schemas/Item"
+          }
+        },
+        "required": [
+          "id",
+          "productionOrderId",
+          "componentItemId",
+          "quantityRequired",
+          "quantityIssued",
+          "issuedValue",
+          "productionOrder",
+          "componentItem"
+        ]
+      },
+      "ProductionOrder": {
+        "type": "object",
+        "properties": {
+          "workflowHistory": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "actorId": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "at": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "actorId",
+                "at"
+              ]
+            }
+          },
+          "materialsRequestedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "materialsRequestedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "handedOverAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "handedOverById": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "startedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "bomId": {
+            "type": "string"
+          },
+          "finishedItemId": {
+            "type": "string"
+          },
+          "inquiryId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Originating customer inquiry (MTO spine)."
+          },
+          "saleId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional sales order / sale this production fulfills."
+          },
+          "locationId": {
+            "type": "string",
+            "description": "Component issue location."
+          },
+          "finishedLocationId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Finished-goods receipt location (defaults to component location)."
+          },
+          "quantityPlanned": {
+            "type": "string"
+          },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
+          "quantityCompleted": {
+            "type": "string"
+          },
+          "quantityScrapped": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "RELEASED",
+              "IN_PROGRESS",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          },
+          "materialsReserved": {
+            "type": "boolean",
+            "description": "True after release reserved component qty."
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdById": {
+            "type": "string",
+            "nullable": true
+          },
+          "releasedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "bom": {
+            "$ref": "#/components/schemas/Bom"
+          },
+          "finishedItem": {
+            "$ref": "#/components/schemas/Item"
+          },
+          "inquiry": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomerInquiry"
+              }
+            ]
+          },
+          "sale": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sale"
+              }
+            ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "finishedLocation": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              }
+            ]
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionOrderLine"
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflowHistory",
+          "materialsRequestedAt",
+          "materialsRequestedById",
+          "handedOverAt",
+          "handedOverById",
+          "startedAt",
+          "startedById",
+          "orderNumber",
+          "bomId",
+          "finishedItemId",
+          "inquiryId",
+          "saleId",
+          "locationId",
+          "finishedLocationId",
+          "quantityPlanned",
+          "unitSnapshot",
+          "quantityCompleted",
+          "quantityScrapped",
+          "status",
+          "materialsReserved",
+          "notes",
+          "createdById",
+          "releasedAt",
+          "completedAt",
+          "bom",
+          "finishedItem",
+          "inquiry",
+          "sale",
+          "location",
+          "finishedLocation",
+          "createdBy",
+          "lines",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
+      },
+      "SaleLine": {
+        "type": "object",
+        "properties": {
+          "saleId": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "string"
+          },
+          "unitSnapshot": {
+            "type": "object",
+            "nullable": true
+          },
+          "unitPrice": {
+            "type": "string"
+          },
+          "purchaseCost": {
+            "type": "string"
+          },
+          "lineTotal": {
+            "type": "string"
+          },
+          "sale": {
+            "$ref": "#/components/schemas/Sale"
+          },
+          "item": {
+            "$ref": "#/components/schemas/Item"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "saleId",
+          "itemId",
+          "quantity",
+          "unitSnapshot",
+          "unitPrice",
+          "purchaseCost",
+          "lineTotal",
+          "sale",
+          "item",
+          "id"
+        ]
+      },
+      "CustomerCredit": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string"
+          },
+          "saleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "enum": [
+              "SALE",
+              "PURCHASE",
+              "OPENING"
+            ],
+            "type": "string"
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "string"
+          },
+          "paidAmount": {
+            "type": "string"
+          },
+          "balance": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "PARTIAL",
+              "PAID"
+            ],
+            "type": "string"
+          },
+          "dueDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "customer": {
+            "$ref": "#/components/schemas/Customer"
+          },
+          "sale": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sale"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customerId",
+          "saleId",
+          "source",
+          "reference",
+          "notes",
+          "amount",
+          "paidAmount",
+          "balance",
+          "status",
+          "dueDate",
+          "customer",
+          "sale",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
+      },
+      "Sale": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "inquiryId": {
+            "type": "string",
+            "nullable": true
+          },
+          "productionOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationId": {
+            "type": "string"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "CASH",
+              "BANK",
+              "CREDIT"
+            ]
+          },
+          "bankAccountId": {
+            "type": "string",
+            "nullable": true
+          },
+          "allowNegativeStock": {
+            "type": "boolean"
+          },
+          "subtotal": {
+            "type": "string"
+          },
+          "total": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "stockWarnings": {
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "VOIDED"
+            ]
+          },
+          "voidedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "createdById": {
+            "type": "string",
+            "nullable": true
+          },
+          "soldByUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "commissionPercent": {
+            "type": "string"
+          },
+          "commissionBasis": {
+            "type": "string",
+            "enum": [
+              "PROFIT",
+              "SALES"
+            ]
+          },
+          "commissionAmount": {
+            "type": "string"
+          },
+          "customer": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Customer"
+              }
+            ]
+          },
+          "inquiry": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomerInquiry"
+              }
+            ]
+          },
+          "productionOrder": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProductionOrder"
+              }
+            ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "bankAccount": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BankAccount"
+              }
+            ]
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "soldByUser": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SaleLine"
+            }
+          },
+          "credit": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomerCredit"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customerId",
+          "inquiryId",
+          "productionOrderId",
+          "locationId",
+          "paymentMethod",
+          "bankAccountId",
+          "allowNegativeStock",
+          "subtotal",
+          "total",
+          "notes",
+          "stockWarnings",
+          "status",
+          "voidedAt",
+          "createdById",
+          "soldByUserId",
+          "commissionPercent",
+          "commissionBasis",
+          "commissionAmount",
+          "customer",
+          "inquiry",
+          "productionOrder",
+          "location",
+          "bankAccount",
+          "createdBy",
+          "soldByUser",
+          "lines",
+          "credit",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
       },
       "CreateCustomerDto": {
         "type": "object",
@@ -12121,12 +12845,12 @@
             "format": "uuid"
           },
           "paymentMethod": {
-            "type": "string",
             "enum": [
               "CASH",
               "BANK",
               "CREDIT"
-            ]
+            ],
+            "type": "string"
           },
           "bankAccountId": {
             "type": "string",
@@ -12190,6 +12914,113 @@
             }
           }
         }
+      },
+      "PurchaseOrder": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "purchase": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Purchase"
+              }
+            ]
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "CANCELLED",
+              "CONFIRMED",
+              "RECEIVED"
+            ]
+          },
+          "locationId": {
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CreatePurchaseDto"
+          },
+          "normalizedLines": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "total": {
+            "type": "string"
+          },
+          "purchaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdById": {
+            "type": "string",
+            "nullable": true
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "actorId": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "actorId",
+                "at"
+              ]
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "location",
+          "purchase",
+          "createdBy",
+          "state",
+          "locationId",
+          "payload",
+          "normalizedLines",
+          "total",
+          "purchaseId",
+          "createdById",
+          "history",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
       },
       "CreateBankAccountDto": {
         "type": "object",
@@ -12318,12 +13149,12 @@
             "format": "uuid"
           },
           "paymentMethod": {
-            "type": "string",
             "enum": [
               "CASH",
               "BANK",
               "CREDIT"
-            ]
+            ],
+            "type": "string"
           },
           "bankAccountId": {
             "type": "string",
@@ -12348,11 +13179,11 @@
             "maximum": 100
           },
           "commissionBasis": {
-            "type": "string",
             "enum": [
               "PROFIT",
               "SALES"
-            ]
+            ],
+            "type": "string"
           },
           "lines": {
             "minItems": 1,
@@ -12468,6 +13299,155 @@
             }
           }
         }
+      },
+      "SalesOrder": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "sale": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sale"
+              }
+            ]
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "approvedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "CANCELLED",
+              "PENDING_APPROVAL",
+              "APPROVED",
+              "CONFIRMED",
+              "DELIVERED"
+            ]
+          },
+          "locationId": {
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CreateSaleDto"
+          },
+          "normalizedLines": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "priceExceptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "total": {
+            "type": "string"
+          },
+          "saleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdById": {
+            "type": "string",
+            "nullable": true
+          },
+          "approvedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "approvedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "approvalNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "actorId": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "actorId",
+                "at"
+              ]
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "location",
+          "sale",
+          "createdBy",
+          "approvedBy",
+          "state",
+          "locationId",
+          "payload",
+          "normalizedLines",
+          "priceExceptions",
+          "total",
+          "saleId",
+          "createdById",
+          "approvedById",
+          "approvedAt",
+          "approvalNote",
+          "history",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ]
+      },
+      "DecisionDto": {
+        "type": "object",
+        "properties": {}
       },
       "CreateOpeningCustomerCreditDto": {
         "type": "object",
