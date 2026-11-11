@@ -51,6 +51,18 @@ export class PurchaseLineDto {
   @IsOptional()
   @IsDateString()
   expiryDate?: string;
+
+  /** Actual roll usable width (m) when receiving fabric lots. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  lotWidthMetres?: number;
+
+  /** Dye-lot / shade band for textile matching. */
+  @IsOptional()
+  @IsString()
+  lotShade?: string;
 }
 
 export class CreatePurchaseDto {

@@ -21,6 +21,10 @@ export interface UnitSnapshot {
   unitId: string;
   category?: UnitOfMeasure['category'];
   squareMetreFactor?: string;
+  /** AREA entry vs LENGTH cut (fabric stocked in metres). */
+  cutMode?: 'AREA' | 'LENGTH';
+  /** Derived coverage area for LENGTH cuts and AREA entries. */
+  areaSquareMetres?: string;
   code: string;
   symbol: string;
   decimalPlaces?: number;
@@ -131,7 +135,11 @@ export async function normalizeLine<
     quantity: number;
     unitId?: string;
     unitPrice?: number;
-    dimensions?: { widthMetres: number; lengthMetres: number; count: number };
+    dimensions?: {
+      widthMetres?: number;
+      lengthMetres: number;
+      count: number;
+    };
   },
 >(
   manager: EntityManager,
@@ -211,27 +219,80 @@ export async function normalizeLine<
     };
   }
   let squareMetreFactor: string | undefined;
+  let cutMode: UnitSnapshot['cutMode'];
+  let areaSquareMetres: string | undefined;
+  let resolvedDimensions:
+    | { widthMetres: number; lengthMetres: number; count: number }
+    | undefined;
   if (!option)
     throw new BadRequestException(
       'This unit is not available for the selected item',
     );
   if (line.dimensions) {
-    const squareMetre = conversionOptions(fresh, units).find(
-      (o) => o.unit.code === 'M2' && o.unit.category === 'AREA',
-    );
-    squareMetreFactor = frozen?.squareMetreFactor ?? squareMetre?.factor;
-    if (!squareMetreFactor || option.unit.category !== 'AREA')
+    const width =
+      line.dimensions.widthMetres ??
+      (fresh.defaultWidthMetres != null
+        ? Number(fresh.defaultWidthMetres)
+        : undefined);
+    if (width == null || !(width > 0))
       throw new BadRequestException(
-        'Width and length entry requires an area unit and a square metre conversion in the group',
+        'Enter width, or set a default fabric width on the item',
       );
-    const area = new ConversionDecimal(line.dimensions.widthMetres)
+    resolvedDimensions = {
+      widthMetres: width,
+      lengthMetres: line.dimensions.lengthMetres,
+      count: line.dimensions.count,
+    };
+    areaSquareMetres = new ConversionDecimal(width)
       .mul(line.dimensions.lengthMetres)
-      .mul(line.dimensions.count);
-    const enteredArea = area.mul(squareMetreFactor).div(option.factor);
-    if (enteredArea.minus(line.quantity).abs().gt('0.000000001'))
-      throw new BadRequestException(
-        'Quantity must match width x length x count',
+      .mul(line.dimensions.count)
+      .toDecimalPlaces(6)
+      .toString();
+
+    if (option.unit.category === 'AREA') {
+      cutMode = 'AREA';
+      const squareMetre = conversionOptions(fresh, units).find(
+        (o) => o.unit.code === 'M2' && o.unit.category === 'AREA',
       );
+      squareMetreFactor = frozen?.squareMetreFactor ?? squareMetre?.factor;
+      if (!squareMetreFactor)
+        throw new BadRequestException(
+          'Width and length entry requires a square metre conversion in the group',
+        );
+      const enteredArea = new ConversionDecimal(areaSquareMetres)
+        .mul(squareMetreFactor)
+        .div(option.factor);
+      if (enteredArea.minus(line.quantity).abs().gt('0.000000001'))
+        throw new BadRequestException(
+          'Quantity must match width x length x count',
+        );
+    } else if (option.unit.category === 'LENGTH') {
+      // Industry model: stock fabric in linear length; width is a characteristic.
+      cutMode = 'LENGTH';
+      const metre = units.find(
+        (u) => u.code === 'M' && u.category === 'LENGTH' && u.isActive,
+      );
+      if (!metre)
+        throw new BadRequestException(
+          'Metre (M) must exist in the unit catalog for fabric cut entry',
+        );
+      const metresToSelected = standardFactor(metre, option.unit);
+      if (!metresToSelected)
+        throw new BadRequestException(
+          'Fabric cut entry requires a standard length unit (M, CM or MM)',
+        );
+      const expectedLength = new ConversionDecimal(line.dimensions.lengthMetres)
+        .mul(line.dimensions.count)
+        .mul(metresToSelected);
+      if (expectedLength.minus(line.quantity).abs().gt('0.000000001'))
+        throw new BadRequestException(
+          'Quantity must match cut length x count in the selected length unit',
+        );
+    } else {
+      throw new BadRequestException(
+        'Width and length entry requires a length (fabric) or area stock unit',
+      );
+    }
   }
   const quantity = convertQuantity(
     line.quantity,
@@ -268,12 +329,14 @@ export async function normalizeLine<
       unitId: option.unit.id,
       category: option.unit.category,
       ...(squareMetreFactor ? { squareMetreFactor } : {}),
+      ...(cutMode ? { cutMode } : {}),
+      ...(areaSquareMetres ? { areaSquareMetres } : {}),
       code: option.unit.code,
       symbol: option.unit.symbol,
       decimalPlaces: option.unit.decimalPlaces,
       factor: option.factor,
       quantity: String(line.quantity),
-      ...(line.dimensions ? { dimensions: { ...line.dimensions } } : {}),
+      ...(resolvedDimensions ? { dimensions: resolvedDimensions } : {}),
       ...(line.unitPrice === undefined
         ? {}
         : { unitPrice: String(line.unitPrice) }),

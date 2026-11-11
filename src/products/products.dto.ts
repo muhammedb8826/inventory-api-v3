@@ -13,6 +13,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { ItemType } from '../common/enums';
@@ -42,6 +43,13 @@ export class SaveFamilyDto {
   @IsEnum(ItemType) itemType: ItemType;
   @IsUUID() unitId: string;
   @IsOptional() @IsUUID() unitGroupId?: string | null;
+  /** Usable fabric width (m); copied to new variants. */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  defaultWidthMetres?: number | null;
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(8)

@@ -28,6 +28,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Item } from '../database/entities/item.entity';
@@ -67,6 +68,12 @@ export class EditCatalogItemDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsUUID() unitId?: string;
   @IsOptional() @IsUUID() unitGroupId?: string | null;
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  defaultWidthMetres?: number | null;
 }
 class PriceDto {
   @IsOptional()
@@ -261,6 +268,11 @@ export class ItemCatalogController {
           changes.unit = unit.symbol;
           changes.salesPrice = null; // A price per the old unit must not become a price per the new unit.
         }
+        if (dto.defaultWidthMetres !== undefined)
+          changes.defaultWidthMetres =
+            dto.defaultWidthMetres === null
+              ? null
+              : dto.defaultWidthMetres.toFixed(3);
         if (Object.keys(changes).length) await repo.update(id, changes);
       });
     } catch (error) {

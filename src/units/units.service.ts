@@ -184,6 +184,7 @@ export class UnitsService {
       },
       units,
     );
+    const category = item.stockUnit.category;
     return {
       requiresReview: !!reviewIssues.length,
       reviewIssues,
@@ -197,6 +198,11 @@ export class UnitsService {
             : null,
       unitGroup: item.unitGroup ?? null,
       baseUnit: item.stockUnit,
+      /** Textile: stock LENGTH fabric and enter cuts as width×length. */
+      fabricCutEntry: category === 'LENGTH' || category === 'AREA',
+      cutMode:
+        category === 'LENGTH' ? 'LENGTH' : category === 'AREA' ? 'AREA' : null,
+      defaultWidthMetres: item.defaultWidthMetres,
       options: conversionOptions(item, units),
       conversions: item.unitConversions ?? [],
     };

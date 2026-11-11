@@ -193,7 +193,13 @@ export class ProductsService {
         );
       for (const variant of variants)
         variantKey(attributes, variant.variantValues);
-      return repo.save(
+      const defaultWidthMetres =
+        dto.defaultWidthMetres === undefined
+          ? (current?.defaultWidthMetres ?? null)
+          : dto.defaultWidthMetres === null
+            ? null
+            : dto.defaultWidthMetres.toFixed(3);
+      const saved = await repo.save(
         repo.create({
           ...current,
           name,
@@ -201,10 +207,16 @@ export class ProductsService {
           unitId: unit.id,
           unitGroupId: group?.id ?? null,
           itemType: dto.itemType,
+          defaultWidthMetres,
           attributes,
           isActive: dto.isActive ?? current?.isActive ?? true,
         }),
       );
+      if (dto.defaultWidthMetres !== undefined && variants.length)
+        await m
+          .getRepository(Item)
+          .update({ productFamilyId: saved.id }, { defaultWidthMetres });
+      return saved;
     });
   }
   async pricing(id: string, dto: FamilyPricingDto) {
@@ -335,6 +347,7 @@ export class ProductsService {
               unit: unit.symbol,
               unitGroupId: family.unitGroupId,
               itemType: family.itemType,
+              defaultWidthMetres: family.defaultWidthMetres,
               isPhantom: false,
               isActive: true,
               unitConversions: [],
@@ -357,6 +370,8 @@ export class ProductsService {
             ...v,
             name: defs.find((d) => d.id === v.attributeId)!.name,
           }));
+          if (family.defaultWidthMetres && !item.defaultWidthMetres)
+            item.defaultWidthMetres = family.defaultWidthMetres;
           await repo.save(item);
           const stockRepo = m.getRepository(StockLevel);
           if (

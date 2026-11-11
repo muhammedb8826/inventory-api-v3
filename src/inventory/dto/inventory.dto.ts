@@ -48,6 +48,14 @@ export class CreateInventoryDto {
   @IsUUID()
   unitGroupId?: string | null;
 
+  /** Usable fabric width (m) when stocked in LENGTH. */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  defaultWidthMetres?: number | null;
+
   @IsOptional()
   @IsEnum(ItemType)
   itemType?: ItemType;
@@ -91,6 +99,13 @@ export class UpdateInventoryDto {
   @IsOptional()
   @IsUUID()
   unitGroupId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  defaultWidthMetres?: number | null;
 
   @IsOptional()
   @IsEnum(ItemType)

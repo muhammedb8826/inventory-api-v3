@@ -70,16 +70,35 @@ Purchase/sales lines show entered quantity and rate with a base-stock preview. C
 
 Each purchase/sale/BOM/transfer/production-plan snapshot records unit ID/code/symbol/precision, factor, entered quantity, and rate where applicable. Old lines without snapshots remain base-unit entries. Changing settings affects new entries and explicitly amended lines, not saved documents. Header-only edits retain saved factors. Sales returns accept base quantities or the original selling unit and always use the original snapshot factor. The return form lets users choose either unit.
 
-## Fabric area entry
+## Fabric and textile cuts (industry model)
 
-For a transaction unit of M2, purchase, sales and BOM forms offer **Calculate width x length**. Enter width and length in metres and a whole piece count. The resulting quantity is width x length x count in square metres. Dimensions are saved in the line snapshot; the API verifies that entered quantity matches the dimensions. Quantities must still fit the base unit's supported precision (up to three decimal places). This does not assert that a physical roll/remnant can accommodate a cut.
+Aligns with common ERP practice (Odoo textile, SAP Fashion batch characteristics, Dynamics textile add-ons):
+
+1. **Stock fabric in LENGTH** (metres / yards on the roll). Inventory quantity is linear length remaining, not square metres.
+2. **Colour and style** are product-family attributes that generate variants (SKUs).
+3. **Usable width** is a product characteristic (`defaultWidthMetres` on the item or family), not a stock unit. Receipts may record actual roll width and dye-lot **shade** on `stock_lots`.
+4. **Width × length** on a document line is a cut helper: stock still moves by cut length; the API also stores derived `areaSquareMetres` on `unitSnapshot` for coverage and costing displays.
+
+### LENGTH stock (preferred for cloth)
+
+- Set the item (or family) stock unit / unit group to Length (e.g. M).
+- Set `defaultWidthMetres` (e.g. `1.500`).
+- On purchase/sale/BOM lines, send `dimensions: { lengthMetres, count }` (width optional; falls back to the item default) and `quantity` equal to **cut length × count** in the selected length unit (M, CM, or MM).
+- Snapshot fields: `cutMode: "LENGTH"`, resolved `dimensions`, `areaSquareMetres = width × length × count`.
+
+### AREA stock (sheet / fixed panel material)
+
+For a transaction unit of M2 (or another area unit with an M2 conversion), forms still offer **Calculate width × length**. Quantity must equal width × length × count in square metres (converted to the selected area unit). Snapshot uses `cutMode: "AREA"`.
+
+Neither mode invents a LENGTH↔AREA unit conversion. Variable roll lengths, shade matching and cutting layout remain lot/operational concerns; FEFO lot issues continue to use `stock_lots`.
 
 ## Conversion API
 
 - `GET /api/v1/units/items/:itemId`: base unit, available options/factors and saved item configuration; authenticated.
 - `PATCH /api/v1/units/items/:itemId`: `{ "conversions": [{ "unitId": "<BOX UUID>", "factor": 12, "purchaseDefault": true }] }`; requires inventory.write. The array replaces that item's configuration; use an empty array to remove alternatives/defaults. Standard automatic options remain available.
 - Purchase/sale/transfer/BOM line DTOs accept optional `unitId`. The quantity and price supplied belong to that selected unit. Omitting it preserves base-unit behavior. Production creation accepts `unitId` for `quantityPlanned`.
-- Purchase/sale/transfer/BOM lines optionally accept `dimensions: { widthMetres, lengthMetres, count }` with M2. Clients must send the matching calculated quantity.
+- Purchase/sale/transfer/BOM lines optionally accept `dimensions: { widthMetres?, lengthMetres, count }`. For AREA units, quantity must match width×length×count (m²). For LENGTH fabric, quantity must match cut length×count; width may come from the line or `defaultWidthMetres`. Clients should read `cutMode` / `areaSquareMetres` from `unitSnapshot`.
+- Item/family: optional `defaultWidthMetres`. Purchase lots: optional `lotWidthMetres` and `lotShade` with `lotNumber`.
 - Stored `quantity` and `unitPrice` continue to represent normalized base values for compatibility. `unitSnapshot` exposes the commercial representation. Currency `lineTotal` is authoritative. Clients displaying commercial documents must use the snapshot when present.
 - Sales-return lines accept `unitId` equal to the base unit or the original selling unit; omitted means base quantity. Packaging changes cannot reinterpret a return.
 
@@ -113,7 +132,7 @@ Use Units of measure > Unit categories to configure a named measurement or packa
 
 Starter groups are Mass (KG/G/MG), Length (M/CM/MM), Area (M2/CM2), Volume (L/ML/M3), Time (H/MIN), and Pieces (PCS/DOZEN). Create specific reusable packaging groups such as Boxes of 10 or Fabric rolls - 50 m rather than giving all boxes or rolls a universal size. Group edits affect all assigned items' future entries. Historical transactions and returns retain their stored conversion snapshot. Inactive groups are unavailable for new assignments; existing items remain operable.
 
-For area entry, select an area group and include M2 if a different base is preferred. Width and length are entered in metres; width x length x count is calculated in square metres, then converted to the selected area unit using the group's M2 ratio. For base CM2, 1.5 m x 2 m becomes 30,000 CM2. Quantities must fit the base precision; the system never silently rounds physical stock. Variable roll dimensions and cutting/remnant tracking are separate from fixed conversion groups.
+For fabric stocked by the metre, select a Length group (M/CM/MM), set `defaultWidthMetres`, and enter cuts with dimensions; stock decrements by length only. For sheet goods stocked by area, select an area group and include M2 if a different base is preferred. Width and length are entered in metres; width x length x count is calculated in square metres, then converted to the selected area unit using the group's M2 ratio. For base CM2, 1.5 m x 2 m becomes 30,000 CM2. Quantities must fit the base precision; the system never silently rounds physical stock. Variable roll lengths, shade and remnant tracking use lots (`widthMetres`, `shade`) rather than fixed conversion groups.
 
 API: authenticated GET /units/groups; inventory.write POST /units/groups and PATCH /units/groups/:id. Write payload: name, category, baseUnitId, conversions (same factor/ratio structure as item conversions), optional isActive. Inventory create/update accepts unitGroupId; a selected group's base wins over a separately supplied unitId. GET /units/items/:id returns unitGroup plus effective inherited options. Per-item conversion writes are rejected for grouped items.
 

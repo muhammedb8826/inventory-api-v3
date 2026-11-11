@@ -362,6 +362,14 @@ export class InventoryService {
               ...(dto.isPhantom !== undefined
                 ? { isPhantom: dto.isPhantom }
                 : {}),
+              ...(dto.defaultWidthMetres !== undefined
+                ? {
+                    defaultWidthMetres:
+                      dto.defaultWidthMetres === null
+                        ? null
+                        : dto.defaultWidthMetres.toFixed(3),
+                  }
+                : {}),
               ...(barcode ? { barcode } : {}),
             });
             item = await items.findOneByOrFail({ id: item.id });
@@ -386,6 +394,11 @@ export class InventoryService {
               unit: unit.symbol,
               itemType: dto.itemType,
               isPhantom: dto.isPhantom === true,
+              ...(dto.defaultWidthMetres != null
+                ? {
+                    defaultWidthMetres: dto.defaultWidthMetres.toFixed(3),
+                  }
+                : {}),
             }),
           );
         } else if (barcode && !item.barcode) {
@@ -480,7 +493,8 @@ export class InventoryService {
         dto.unitGroupId !== undefined ||
         dto.unitId !== undefined ||
         dto.itemType !== undefined ||
-        dto.isPhantom !== undefined;
+        dto.isPhantom !== undefined ||
+        dto.defaultWidthMetres !== undefined;
 
       if (itemChanged) {
         if (dto.description !== undefined) {
@@ -553,6 +567,12 @@ export class InventoryService {
         if (dto.isPhantom !== undefined) {
           stock.item.isPhantom = dto.isPhantom;
         }
+        if (dto.defaultWidthMetres !== undefined) {
+          stock.item.defaultWidthMetres =
+            dto.defaultWidthMetres === null
+              ? null
+              : dto.defaultWidthMetres.toFixed(3);
+        }
         if (dto.reorderPoint != null)
           assertUnitQuantity(
             stock.item.stockUnit,
@@ -589,6 +609,9 @@ export class InventoryService {
               : {}),
             ...(dto.isPhantom !== undefined
               ? { isPhantom: stock.item.isPhantom }
+              : {}),
+            ...(dto.defaultWidthMetres !== undefined
+              ? { defaultWidthMetres: stock.item.defaultWidthMetres }
               : {}),
           });
         } catch (err) {

@@ -135,6 +135,58 @@ describe('unit conversions', () => {
     });
     expect(line.quantity).toBe(30000);
     expect(line.unitSnapshot.dimensions?.widthMetres).toBe(1.5);
+    expect(line.unitSnapshot.cutMode).toBe('AREA');
+    expect(line.unitSnapshot.areaSquareMetres).toBe('3');
+  });
+  it('stocks fabric in metres and treats width as a cut characteristic', async () => {
+    const m = unit('m', 'M', 'LENGTH');
+    const item = Object.assign(new Item(), {
+      id: 'roll',
+      unitId: m.id,
+      stockUnit: m,
+      defaultWidthMetres: '1.5',
+      unitGroup: {
+        category: 'LENGTH',
+        baseUnitId: m.id,
+        conversions: [],
+      },
+    });
+    const manager = {
+      getRepository: (entity: unknown) =>
+        entity === Item
+          ? { findOne: async () => item, findOneByOrFail: async () => item }
+          : { find: async () => [m] },
+    } as unknown as EntityManager;
+    const line = await normalizeLine(manager, 'roll', {
+      quantity: 4,
+      unitId: m.id,
+      dimensions: { lengthMetres: 2, count: 2 },
+    });
+    expect(line.quantity).toBe(4);
+    expect(line.unitSnapshot.cutMode).toBe('LENGTH');
+    expect(line.unitSnapshot.dimensions?.widthMetres).toBe(1.5);
+    expect(line.unitSnapshot.areaSquareMetres).toBe('6');
+  });
+  it('rejects fabric cut quantity that does not match cut length', async () => {
+    const m = unit('m', 'M', 'LENGTH');
+    const item = Object.assign(new Item(), {
+      id: 'roll',
+      unitId: m.id,
+      stockUnit: m,
+      defaultWidthMetres: '1.4',
+    });
+    const manager = {
+      getRepository: (entity: unknown) =>
+        entity === Item
+          ? { findOne: async () => item, findOneByOrFail: async () => item }
+          : { find: async () => [m] },
+    } as unknown as EntityManager;
+    await expect(
+      normalizeLine(manager, 'roll', {
+        quantity: 3,
+        dimensions: { widthMetres: 1.4, lengthMetres: 2, count: 1 },
+      }),
+    ).rejects.toThrow('cut length');
   });
   it('uses the commercial price for totals, avoiding recurring base-rate rounding', () => {
     expect(

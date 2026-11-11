@@ -45,6 +45,8 @@ export class PurchaseOrder extends UuidBaseEntity {
   normalizedLines: (OrderLineSnapshot & {
     lotNumber?: string;
     expiryDate?: string;
+    lotWidthMetres?: number;
+    lotShade?: string;
   })[];
   @Column({ type: 'numeric', precision: 14, scale: 2, default: 0 })
   total: string;

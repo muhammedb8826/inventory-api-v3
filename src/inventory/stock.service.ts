@@ -29,6 +29,9 @@ export interface StockAdjustment {
   /** Optional lot/batch for receipts & issues. */
   lotNumber?: string;
   expiryDate?: string | null;
+  /** Roll usable width (m) and dye-lot shade on receipt. */
+  lotWidthMetres?: number | null;
+  lotShade?: string | null;
   /** Ledger metadata — defaults to ADJUSTMENT when omitted. */
   movement?: StockMovementMeta;
 }
@@ -335,12 +338,22 @@ export class StockService {
           itemId: adj.itemId,
           lotNumber,
           expiryDate: adj.expiryDate ?? null,
+          widthMetres:
+            adj.lotWidthMetres != null ? adj.lotWidthMetres.toFixed(3) : null,
+          shade: adj.lotShade?.trim() || null,
           quantity: '0',
         });
       }
       row.quantity = (parseFloat(row.quantity) + qty).toFixed(3);
       if (adj.expiryDate !== undefined) {
         row.expiryDate = adj.expiryDate;
+      }
+      if (adj.lotWidthMetres !== undefined) {
+        row.widthMetres =
+          adj.lotWidthMetres === null ? null : adj.lotWidthMetres.toFixed(3);
+      }
+      if (adj.lotShade !== undefined) {
+        row.shade = adj.lotShade?.trim() || null;
       }
       const saved = await lot.save(row);
       return {

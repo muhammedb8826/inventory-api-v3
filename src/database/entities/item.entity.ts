@@ -44,6 +44,19 @@ export class Item extends UuidBaseEntity {
     nullable: true,
   })
   salesPrice: string | null;
+
+  /**
+   * Usable fabric width in metres (product master). Used when cutting LENGTH
+   * stock by width×length; stock quantity remains linear metres.
+   */
+  @Column({
+    name: 'default_width_metres',
+    type: 'numeric',
+    precision: 14,
+    scale: 3,
+    nullable: true,
+  })
+  defaultWidthMetres: string | null;
   @Column({ name: 'product_family_id', type: 'uuid', nullable: true })
   productFamilyId: string | null;
   @ManyToOne(() => ProductFamily, { nullable: true })

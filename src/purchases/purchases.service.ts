@@ -323,6 +323,8 @@ export class PurchasesService {
             purchasePrice: line.unitPrice,
             lotNumber: line.lotNumber,
             expiryDate: line.expiryDate ?? null,
+            lotWidthMetres: line.lotWidthMetres,
+            lotShade: line.lotShade,
             movement: {
               type: StockMovementType.PURCHASE,
               refType: 'purchase',
@@ -468,6 +470,8 @@ export class PurchasesService {
       lines: (OrderLineSnapshot & {
         lotNumber?: string;
         expiryDate?: string;
+        lotWidthMetres?: number;
+        lotShade?: string;
       })[];
     },
   ) {
@@ -536,6 +540,8 @@ export class PurchasesService {
             purchasePrice: line.unitPrice,
             lotNumber: line.lotNumber,
             expiryDate: line.expiryDate ?? null,
+            lotWidthMetres: line.lotWidthMetres,
+            lotShade: line.lotShade,
             movement: {
               type: StockMovementType.PURCHASE,
               refType: 'purchase',

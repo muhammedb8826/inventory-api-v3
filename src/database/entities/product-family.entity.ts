@@ -49,6 +49,15 @@ export class ProductFamily extends UuidBaseEntity {
   @ManyToOne(() => UnitGroup, { eager: true, nullable: true })
   @JoinColumn({ name: 'unit_group_id' })
   unitGroup: UnitGroup | null;
+  /** Default usable fabric width (m); copied onto new variants. */
+  @Column({
+    name: 'default_width_metres',
+    type: 'numeric',
+    precision: 14,
+    scale: 3,
+    nullable: true,
+  })
+  defaultWidthMetres: string | null;
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   attributes: FamilyAttribute[];
   @Column({ name: 'is_active', default: true }) isActive: boolean;
