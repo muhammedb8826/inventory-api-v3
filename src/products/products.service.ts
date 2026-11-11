@@ -14,6 +14,7 @@ import {
   StockLevel,
 } from '../database/entities';
 import { UnitsService } from '../units/units.service';
+import { normalizeUsableWidthMetres } from '../units/usable-width';
 import { applyLocationScope, locationContext } from '../common/location-scope';
 import {
   CreateVariantsDto,
@@ -193,12 +194,13 @@ export class ProductsService {
         );
       for (const variant of variants)
         variantKey(attributes, variant.variantValues);
-      const defaultWidthMetres =
+      const category = group?.category ?? unit.category;
+      const defaultWidthMetres = normalizeUsableWidthMetres(
+        category,
         dto.defaultWidthMetres === undefined
-          ? (current?.defaultWidthMetres ?? null)
-          : dto.defaultWidthMetres === null
-            ? null
-            : dto.defaultWidthMetres.toFixed(3);
+          ? current?.defaultWidthMetres
+          : dto.defaultWidthMetres,
+      );
       const saved = await repo.save(
         repo.create({
           ...current,
@@ -212,7 +214,10 @@ export class ProductsService {
           isActive: dto.isActive ?? current?.isActive ?? true,
         }),
       );
-      if (dto.defaultWidthMetres !== undefined && variants.length)
+      if (
+        (dto.defaultWidthMetres !== undefined || category !== 'LENGTH') &&
+        variants.length
+      )
         await m
           .getRepository(Item)
           .update({ productFamilyId: saved.id }, { defaultWidthMetres });

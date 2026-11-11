@@ -46,8 +46,9 @@ export class Item extends UuidBaseEntity {
   salesPrice: string | null;
 
   /**
-   * Usable fabric width in metres (product master). Used when cutting LENGTH
-   * stock by width×length; stock quantity remains linear metres.
+   * Usable width in metres (product master). For LENGTH stock when entering
+   * width×length; stock quantity remains in the length unit. Cleared when the
+   * stock category is not LENGTH.
    */
   @Column({
     name: 'default_width_metres',

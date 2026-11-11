@@ -34,7 +34,7 @@ export class StockLot extends UuidBaseEntity {
   @Column({ name: 'expiry_date', type: 'date', nullable: true })
   expiryDate: string | null;
 
-  /** Actual roll usable width (m); overrides item default when set. */
+  /** Actual lot usable width (m); overrides item default when set. */
   @Column({
     name: 'width_metres',
     type: 'numeric',
@@ -44,7 +44,7 @@ export class StockLot extends UuidBaseEntity {
   })
   widthMetres: string | null;
 
-  /** Dye-lot / shade band for textile matching. */
+  /** Lot shade / mark (batch characteristic). */
   @Column({ type: 'varchar', length: 80, nullable: true })
   shade: string | null;
 

@@ -21,7 +21,7 @@ export interface UnitSnapshot {
   unitId: string;
   category?: UnitOfMeasure['category'];
   squareMetreFactor?: string;
-  /** AREA entry vs LENGTH cut (fabric stocked in metres). */
+  /** AREA entry vs LENGTH cut (linear stock with usable width). */
   cutMode?: 'AREA' | 'LENGTH';
   /** Derived coverage area for LENGTH cuts and AREA entries. */
   areaSquareMetres?: string;
@@ -236,7 +236,7 @@ export async function normalizeLine<
         : undefined);
     if (width == null || !(width > 0))
       throw new BadRequestException(
-        'Enter width, or set a default fabric width on the item',
+        'Enter width, or set a default usable width on the item',
       );
     resolvedDimensions = {
       widthMetres: width,
@@ -267,30 +267,30 @@ export async function normalizeLine<
           'Quantity must match width x length x count',
         );
     } else if (option.unit.category === 'LENGTH') {
-      // Industry model: stock fabric in linear length; width is a characteristic.
+      // Linear stock (rolls, reels, film, etc.): qty is length; width is a characteristic.
       cutMode = 'LENGTH';
       const metre = units.find(
         (u) => u.code === 'M' && u.category === 'LENGTH' && u.isActive,
       );
       if (!metre)
         throw new BadRequestException(
-          'Metre (M) must exist in the unit catalog for fabric cut entry',
+          'Metre (M) must exist in the unit catalog for length-based dimension entry',
         );
       const metresToSelected = standardFactor(metre, option.unit);
       if (!metresToSelected)
         throw new BadRequestException(
-          'Fabric cut entry requires a standard length unit (M, CM or MM)',
+          'Length-based dimension entry requires a standard length unit (M, CM or MM)',
         );
       const expectedLength = new ConversionDecimal(line.dimensions.lengthMetres)
         .mul(line.dimensions.count)
         .mul(metresToSelected);
       if (expectedLength.minus(line.quantity).abs().gt('0.000000001'))
         throw new BadRequestException(
-          'Quantity must match cut length x count in the selected length unit',
+          'Quantity must match length x count in the selected length unit',
         );
     } else {
       throw new BadRequestException(
-        'Width and length entry requires a length (fabric) or area stock unit',
+        'Width and length entry requires a length or area stock unit',
       );
     }
   }

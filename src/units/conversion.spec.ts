@@ -138,7 +138,7 @@ describe('unit conversions', () => {
     expect(line.unitSnapshot.cutMode).toBe('AREA');
     expect(line.unitSnapshot.areaSquareMetres).toBe('3');
   });
-  it('stocks fabric in metres and treats width as a cut characteristic', async () => {
+  it('stocks length-based items in metres and treats width as a characteristic', async () => {
     const m = unit('m', 'M', 'LENGTH');
     const item = Object.assign(new Item(), {
       id: 'roll',
@@ -167,7 +167,7 @@ describe('unit conversions', () => {
     expect(line.unitSnapshot.dimensions?.widthMetres).toBe(1.5);
     expect(line.unitSnapshot.areaSquareMetres).toBe('6');
   });
-  it('rejects fabric cut quantity that does not match cut length', async () => {
+  it('rejects length dimension quantity that does not match length x count', async () => {
     const m = unit('m', 'M', 'LENGTH');
     const item = Object.assign(new Item(), {
       id: 'roll',
@@ -186,7 +186,7 @@ describe('unit conversions', () => {
         quantity: 3,
         dimensions: { widthMetres: 1.4, lengthMetres: 2, count: 1 },
       }),
-    ).rejects.toThrow('cut length');
+    ).rejects.toThrow('length x count');
   });
   it('uses the commercial price for totals, avoiding recurring base-rate rounding', () => {
     expect(

@@ -198,11 +198,14 @@ export class UnitsService {
             : null,
       unitGroup: item.unitGroup ?? null,
       baseUnit: item.stockUnit,
-      /** Textile: stock LENGTH fabric and enter cuts as width×length. */
+      /** Width×length entry for length-based or area-based stock. */
+      dimensionEntry: category === 'LENGTH' || category === 'AREA',
+      /** @deprecated use dimensionEntry */
       fabricCutEntry: category === 'LENGTH' || category === 'AREA',
       cutMode:
         category === 'LENGTH' ? 'LENGTH' : category === 'AREA' ? 'AREA' : null,
-      defaultWidthMetres: item.defaultWidthMetres,
+      defaultWidthMetres:
+        category === 'LENGTH' ? item.defaultWidthMetres : null,
       options: conversionOptions(item, units),
       conversions: item.unitConversions ?? [],
     };

@@ -42,6 +42,8 @@ import type { UploadedImageFile } from './dto/uploaded-file.interface';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { UnitsService } from '../units/units.service';
+import { normalizeUsableWidthMetres } from '../units/usable-width';
+import { UnitGroup } from '../database/entities/unit-group.entity';
 import { randomUUID } from 'crypto';
 import { addRecordActivity } from '../common/record-activity';
 import { StockLevel } from '../database/entities/stock-level.entity';
@@ -270,11 +272,26 @@ export class ItemCatalogController {
           changes.unit = unit.symbol;
           changes.salesPrice = null; // A price per the old unit must not become a price per the new unit.
         }
-        if (dto.defaultWidthMetres !== undefined)
-          changes.defaultWidthMetres =
-            dto.defaultWidthMetres === null
-              ? null
-              : dto.defaultWidthMetres.toFixed(3);
+        const effectiveUnitId = changes.unitId ?? item.unitId;
+        const effectiveGroupId =
+          changes.unitGroupId !== undefined
+            ? changes.unitGroupId
+            : item.unitGroupId;
+        const group = effectiveGroupId
+          ? await m.getRepository(UnitGroup).findOneBy({ id: effectiveGroupId })
+          : null;
+        const stockUnit = await m
+          .getRepository(UnitOfMeasure)
+          .findOneByOrFail({ id: effectiveUnitId });
+        const category = group?.category ?? stockUnit.category;
+        if (dto.defaultWidthMetres !== undefined || category !== 'LENGTH') {
+          changes.defaultWidthMetres = normalizeUsableWidthMetres(
+            category,
+            dto.defaultWidthMetres !== undefined
+              ? dto.defaultWidthMetres
+              : item.defaultWidthMetres,
+          );
+        }
         if (Object.keys(changes).length) await repo.update(id, changes);
       });
     } catch (error) {

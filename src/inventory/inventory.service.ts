@@ -1,6 +1,7 @@
 import { effectiveSalesPrice } from '../products/family-pricing';
 import { UnitsService } from '../units/units.service';
 import { assertUnitQuantity } from '../units/unit-quantity';
+import { normalizeUsableWidthMetres } from '../units/usable-width';
 import { applyLocationScope } from '../common/location-scope';
 import {
   BadRequestException,
@@ -362,14 +363,10 @@ export class InventoryService {
               ...(dto.isPhantom !== undefined
                 ? { isPhantom: dto.isPhantom }
                 : {}),
-              ...(dto.defaultWidthMetres !== undefined
-                ? {
-                    defaultWidthMetres:
-                      dto.defaultWidthMetres === null
-                        ? null
-                        : dto.defaultWidthMetres.toFixed(3),
-                  }
-                : {}),
+              defaultWidthMetres: normalizeUsableWidthMetres(
+                group?.category ?? unit.category,
+                dto.defaultWidthMetres,
+              ),
               ...(barcode ? { barcode } : {}),
             });
             item = await items.findOneByOrFail({ id: item.id });
@@ -394,11 +391,10 @@ export class InventoryService {
               unit: unit.symbol,
               itemType: dto.itemType,
               isPhantom: dto.isPhantom === true,
-              ...(dto.defaultWidthMetres != null
-                ? {
-                    defaultWidthMetres: dto.defaultWidthMetres.toFixed(3),
-                  }
-                : {}),
+              defaultWidthMetres: normalizeUsableWidthMetres(
+                group?.category ?? unit.category,
+                dto.defaultWidthMetres,
+              ),
             }),
           );
         } else if (barcode && !item.barcode) {
@@ -567,11 +563,25 @@ export class InventoryService {
         if (dto.isPhantom !== undefined) {
           stock.item.isPhantom = dto.isPhantom;
         }
-        if (dto.defaultWidthMetres !== undefined) {
-          stock.item.defaultWidthMetres =
-            dto.defaultWidthMetres === null
-              ? null
-              : dto.defaultWidthMetres.toFixed(3);
+        {
+          const groupMeta = stock.item.unitGroupId
+            ? await this.units.group(stock.item.unitGroupId)
+            : null;
+          const category =
+            groupMeta?.category ?? stock.item.stockUnit.category;
+          if (
+            dto.defaultWidthMetres !== undefined ||
+            category !== 'LENGTH' ||
+            previousUnitId !== stock.item.unitId ||
+            dto.unitGroupId !== undefined
+          ) {
+            stock.item.defaultWidthMetres = normalizeUsableWidthMetres(
+              category,
+              dto.defaultWidthMetres !== undefined
+                ? dto.defaultWidthMetres
+                : stock.item.defaultWidthMetres,
+            );
+          }
         }
         if (dto.reorderPoint != null)
           assertUnitQuantity(
@@ -610,7 +620,10 @@ export class InventoryService {
             ...(dto.isPhantom !== undefined
               ? { isPhantom: stock.item.isPhantom }
               : {}),
-            ...(dto.defaultWidthMetres !== undefined
+            ...(dto.defaultWidthMetres !== undefined ||
+            dto.unitGroupId !== undefined ||
+            previousUnitId !== stock.item.unitId ||
+            stock.item.defaultWidthMetres === null
               ? { defaultWidthMetres: stock.item.defaultWidthMetres }
               : {}),
           });

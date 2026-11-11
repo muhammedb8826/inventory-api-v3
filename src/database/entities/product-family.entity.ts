@@ -49,7 +49,7 @@ export class ProductFamily extends UuidBaseEntity {
   @ManyToOne(() => UnitGroup, { eager: true, nullable: true })
   @JoinColumn({ name: 'unit_group_id' })
   unitGroup: UnitGroup | null;
-  /** Default usable fabric width (m); copied onto new variants. */
+  /** Default usable width (m) for LENGTH stock; copied onto new variants. */
   @Column({
     name: 'default_width_metres',
     type: 'numeric',
