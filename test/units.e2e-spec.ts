@@ -12,6 +12,7 @@ import { LocationType } from '../src/common/enums';
 import { StockService } from '../src/inventory/stock.service';
 const PCS = '10000000-0000-4000-8000-000000000001';
 const KG = '10000000-0000-4000-8000-000000000002';
+const M = '10000000-0000-4000-8000-000000000004';
 describe('Structured units (isolated PostgreSQL)', () => {
   let app: NestExpressApplication,
     db: DataSource,
@@ -320,6 +321,44 @@ describe('Structured units (isolated PostgreSQL)', () => {
       await corrector.release();
     }
   }, 15000);
+  it('allows correcting a mistaken unit after on-hand is reduced to zero', async () => {
+    const created = await post({ unitId: PCS, quantity: 5 }).expect(201);
+    expect(
+      (
+        await request(app.getHttpServer())
+          .get(`/api/v1/units/items/${created.body.itemId}`)
+          .auth(token, { type: 'bearer' })
+          .expect(200)
+      ).body.canChangeBaseUnit,
+    ).toBe(false);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/inventory/${created.body.id}`)
+      .auth(token, { type: 'bearer' })
+      .send({ unitId: M })
+      .expect(400);
+    await app.get(StockService).adjust({
+      locationId,
+      itemId: created.body.itemId,
+      quantityDelta: -5,
+    });
+    expect(
+      (
+        await request(app.getHttpServer())
+          .get(`/api/v1/units/items/${created.body.itemId}`)
+          .auth(token, { type: 'bearer' })
+          .expect(200)
+      ).body.canChangeBaseUnit,
+    ).toBe(true);
+    const corrected = (
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inventory/${created.body.id}`)
+        .auth(token, { type: 'bearer' })
+        .send({ unitId: M, purchasePrice: 12 })
+        .expect(200)
+    ).body;
+    expect(corrected.item.unitId).toBe(M);
+    expect(Number(corrected.quantity)).toBe(0);
+  });
   it('corrects unit, cost and reorder point together and rolls back an invalid correction', async () => {
     const created = await post({
       unitId: KG,

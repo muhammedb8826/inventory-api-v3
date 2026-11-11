@@ -251,7 +251,9 @@ export class ItemCatalogController {
           );
           if (used || item.unitConversions?.length)
             throw new BadRequestException(
-              'Stock unit is locked by history or conversions. Use a same-category conversion.',
+              used
+                ? 'Reduce on-hand quantity to zero and remove the item from open documents before correcting the stock unit.'
+                : 'Remove alternative unit settings before correcting the stock unit.',
             );
           const unit = await m
             .getRepository(UnitOfMeasure)

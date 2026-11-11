@@ -192,7 +192,7 @@ export class UnitsService {
       baseUnitLockReason: item.productFamilyId
         ? 'This variant inherits its base stock unit from its product family.'
         : inUse
-          ? 'Stock unit is protected by stock, movements or related documents. Use an alternative conversion for future transactions.'
+          ? 'Reduce on-hand (and reserved) quantity to zero and remove the item from open documents before correcting the stock unit. Past ledger history alone does not block a correction.'
           : configured
             ? 'Remove alternative unit settings before correcting this unused item.'
             : null,

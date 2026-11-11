@@ -104,11 +104,11 @@ Neither mode invents a LENGTH↔AREA unit conversion. Variable roll lengths, sha
 
 Deploy the API source, install/build on cPanel, back up, run `npm run migration:run`, then restart the API before deploying the matching frontend. Source upload alone does not rebuild or restart the application.
 
-## Correcting an unused item
+## Correcting a mistaken stock unit
 
-`GET /units/items/:itemId` returns `canChangeBaseUnit` and `baseUnitLockReason`. The inventory edit form uses these to enable the stock-unit selector only for unused items. The database trigger independently enforces this rule for API and direct SQL writes. Real movements remain history even when stock is later reduced to zero. Zero opening records can remain as zero records after a correction; no historical quantity/value is converted.
+Follows common SME ERP practice (ERPNext / similar): the base stock unit can be corrected when **on-hand and reserved quantity are zero** and the item is **not referenced on commercial or operational documents** (sales, purchases, BOMs, inquiries, transfers, production, stocktakes, open sales/purchase orders). Past stock movements alone no longer permanently lock the unit — so an accidental opening in PCS can be fixed by adjusting quantity to zero, changing the unit to metres, then receiving stock again in the correct unit.
 
-For unused items, select the correct base unit, review cost per new unit and reorder points, and save the product. These edits commit together; an invalid correction rolls back all its changes. The correction applies to the shared item across locations. Any nonzero stock, reservations, lots or related operational documents protects the base unit. Existing alternative settings must be removed first, then rebuilt after the correction.
+`GET /units/items/:itemId` returns `canChangeBaseUnit` and `baseUnitLockReason`. The inventory and item edit forms use these to enable the stock-unit selector. The database trigger enforces the same rule for API and direct SQL writes. Document line snapshots keep their original units; a correction does not rewrite history. Existing alternative unit settings must be removed first, then rebuilt after the correction. Review unit cost and reorder point when saving. Variants still inherit the product-family unit and cannot be corrected independently.
 
 ## Fixed pieces measured by area
 
