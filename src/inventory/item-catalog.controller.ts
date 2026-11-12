@@ -122,8 +122,8 @@ export class ItemCatalogController {
       .leftJoinAndSelect('i.stockUnit', 'stockUnit')
       .leftJoinAndSelect('i.unitGroup', 'unitGroup')
       .leftJoinAndSelect('i.productFamily', 'productFamily')
-      .orderBy('i.description', 'ASC')
-      .addOrderBy('i.id', 'ASC');
+      .orderBy('i.createdAt', 'DESC')
+      .addOrderBy('i.id', 'DESC');
     if (query.search?.trim())
       qb.where(
         '(i.description ILIKE :q OR i.sku ILIKE :q OR i.barcode ILIKE :q)',
