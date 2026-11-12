@@ -1301,7 +1301,7 @@ export class InventoryService {
   }
 
   /**
-   * Product create (Odoo-style): location is not chosen on the form.
+   * Product create: location is not chosen on the form.
    * Prefer an active warehouse, then showroom, then any active location.
    * Honors the caller's location scope when set.
    */

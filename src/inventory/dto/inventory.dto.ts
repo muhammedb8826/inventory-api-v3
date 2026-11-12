@@ -25,7 +25,7 @@ export class CreateInventoryDto {
 
   /**
    * Optional. When omitted, the API uses the default active warehouse
-   * (then showroom, then any active location) — same idea as Odoo product create.
+   * (then showroom, then any active location).
    */
   @IsOptional()
   @IsUUID()
