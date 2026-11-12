@@ -23,8 +23,13 @@ export class CreateInventoryDto {
   @IsString()
   description: string;
 
+  /**
+   * Optional. When omitted, the API uses the default active warehouse
+   * (then showroom, then any active location) — same idea as Odoo product create.
+   */
+  @IsOptional()
   @IsUUID()
-  locationId: string;
+  locationId?: string;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 3 })

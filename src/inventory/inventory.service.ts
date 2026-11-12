@@ -2,7 +2,10 @@ import { effectiveSalesPrice } from '../products/family-pricing';
 import { UnitsService } from '../units/units.service';
 import { assertUnitQuantity } from '../units/unit-quantity';
 import { normalizeUsableWidthMetres } from '../units/usable-width';
-import { applyLocationScope } from '../common/location-scope';
+import {
+  applyLocationScope,
+  locationContext,
+} from '../common/location-scope';
 import {
   BadRequestException,
   ConflictException,
@@ -260,7 +263,7 @@ export class InventoryService {
   }
 
   async create(dto: CreateInventoryDto, requestBaseUrl?: string) {
-    await this.ensureLocation(dto.locationId);
+    const locationId = await this.resolveCreateLocationId(dto.locationId);
     const sku = dto.sku?.trim() || null;
     const barcode = dto.barcode?.trim() || null;
     let saved: StockLevel;
@@ -402,7 +405,7 @@ export class InventoryService {
         }
         const adjusted = await this.stockService.adjust(
           {
-            locationId: dto.locationId,
+            locationId,
             itemId: item.id,
             quantityDelta: dto.quantity,
             purchasePrice: dto.purchasePrice,
@@ -1295,6 +1298,54 @@ export class InventoryService {
   private async ensureLocation(locationId: string) {
     const loc = await this.locationRepo.findOne({ where: { id: locationId } });
     if (!loc) throw new BadRequestException('Location not found');
+  }
+
+  /**
+   * Product create (Odoo-style): location is not chosen on the form.
+   * Prefer an active warehouse, then showroom, then any active location.
+   * Honors the caller's location scope when set.
+   */
+  private async resolveCreateLocationId(locationId?: string): Promise<string> {
+    const allowed = locationContext.getStore();
+    if (locationId) {
+      await this.ensureLocation(locationId);
+      if (allowed != null && !allowed.includes(locationId)) {
+        throw new BadRequestException('Location not permitted for this user');
+      }
+      return locationId;
+    }
+
+    if (allowed != null && !allowed.length) {
+      throw new BadRequestException('No stock location available');
+    }
+
+    const scoped = () => {
+      const qb = this.locationRepo
+        .createQueryBuilder('l')
+        .where('l.isActive = :active', { active: true })
+        .orderBy('l.createdAt', 'ASC');
+      if (allowed != null) {
+        qb.andWhere('l.id IN (:...scopeLocations)', {
+          scopeLocations: allowed,
+        });
+      }
+      return qb;
+    };
+
+    for (const type of [LocationType.WAREHOUSE, LocationType.SHOWROOM]) {
+      const preferred = await scoped()
+        .andWhere('l.type = :type', { type })
+        .getOne();
+      if (preferred) return preferred.id;
+    }
+
+    const fallback = await scoped().getOne();
+    if (!fallback) {
+      throw new BadRequestException(
+        'No active warehouse found. Create a warehouse before adding products.',
+      );
+    }
+    return fallback.id;
   }
 }
 
